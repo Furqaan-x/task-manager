@@ -1,0 +1,3067 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChronoSheet — Daily Task & Sheet Planner</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    /* Custom subtle scrollbars & transitions */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.65);
+    }
+    .progress-ring-circle {
+      transition: stroke-dashoffset 0.55s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.35s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-task {
+      animation: fadeSlideIn 0.22s ease-out forwards;
+    }
+    .drag-over-card {
+      border-color: #6366f1 !important;
+      background-color: rgba(99, 102, 241, 0.06) !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased selection:bg-indigo-500 selection:text-white transition-colors duration-200">
+
+  <!-- Toast Notification Container (Supports Undo Button) -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-sm"></div>
+
+  <!-- Floating / Docked Smart Focus Timer Pill -->
+  <div id="focus-timer-dock" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 lg:left-auto lg:right-6 lg:translate-x-0 z-40 bg-slate-900 dark:bg-slate-800 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3.5 transition-all">
+    <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+      <i data-lucide="timer" class="w-5 h-5 animate-pulse"></i>
+    </div>
+    <div class="min-w-0 max-w-[180px] sm:max-w-[230px]">
+      <div class="flex items-center gap-2">
+        <span id="focus-timer-display" class="font-mono text-base font-bold tracking-tight text-emerald-400">25:00</span>
+        <div class="flex items-center gap-1">
+          <button onclick="setFocusDuration(25)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 dark:bg-slate-700 hover:bg-indigo-600 font-mono transition cursor-pointer">25m</button>
+          <button onclick="setFocusDuration(15)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 dark:bg-slate-700 hover:bg-indigo-600 font-mono transition cursor-pointer">15m</button>
+          <button onclick="setFocusDuration(5)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 dark:bg-slate-700 hover:bg-indigo-600 font-mono transition cursor-pointer">5m</button>
+        </div>
+      </div>
+      <p id="focus-task-title" class="text-[11px] text-slate-300 truncate mt-0.5">Focus Session</p>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="focus-toggle-btn" onclick="toggleFocusTimer()" class="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer" title="Pause / Resume">
+        <i data-lucide="pause" class="w-4 h-4"></i>
+      </button>
+      <button onclick="completeFocusedTask()" class="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer" title="Log & Complete Task">
+        <i data-lucide="check" class="w-4 h-4"></i>
+      </button>
+      <button onclick="stopFocusTimer()" class="p-1.5 rounded-lg text-slate-400 hover:text-white transition cursor-pointer" title="Close Timer">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main App Shell -->
+  <div class="min-h-screen flex flex-col lg:flex-row">
+
+    <!-- Mobile Top Header -->
+    <header class="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+      <div class="flex items-center gap-2.5">
+        <button id="mobile-sidebar-btn" class="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Open Calendar Sidebar">
+          <i data-lucide="calendar-days" class="w-5 h-5"></i>
+        </button>
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-sm">
+            <i data-lucide="check-square" class="w-4 h-4"></i>
+          </div>
+          <span class="font-bold text-base tracking-tight">ChronoSheet</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button onclick="openSheetModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-sm">
+          <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+          <span>Sheet</span>
+        </button>
+        <button onclick="toggleTheme()" class="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Toggle Theme">
+          <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+          <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Mobile Sidebar Backdrop -->
+    <div id="sidebar-backdrop" onclick="closeMobileSidebar()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-30 hidden lg:hidden"></div>
+
+    <!-- LEFT SIDEBAR: Calendar Archive & Past Dates -->
+    <aside id="left-sidebar" class="fixed lg:sticky top-0 left-0 z-40 h-screen w-80 xl:w-[340px] shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out">
+      <!-- Brand Header -->
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-base tracking-tight leading-none">ChronoSheet</h1>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Daily Tracker &amp; Sheets Sync</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div id="sidebar-streak-pill" onclick="openInsightsModal()" class="cursor-pointer px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800/60 text-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-1" title="View Streak & Analytics">
+            <span>🔥</span>
+            <span id="sidebar-streak-count">3d</span>
+          </div>
+          <button onclick="closeMobileSidebar()" class="lg:hidden p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Sidebar Content -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <!-- Interactive Monthly Calendar Archive -->
+        <div class="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/70">
+          <div class="flex items-center justify-between mb-3">
+            <button onclick="changeCalendarMonth(-1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer" title="Previous Month">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <span id="calendar-month-label" class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">November 2026</span>
+            <button onclick="changeCalendarMonth(1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer" title="Next Month">
+              <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <!-- Weekday Headers -->
+          <div class="grid grid-cols-7 text-center text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+
+          <!-- Calendar Days Grid -->
+          <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center"></div>
+
+          <!-- Legend -->
+          <div class="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>100%</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Partial</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>Low</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-500"></span>Active</span>
+          </div>
+        </div>
+
+        <!-- Recent Completed & Archived Days List -->
+        <div>
+          <div class="flex items-center justify-between mb-2.5 px-1">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="history" class="w-3.5 h-3.5"></i>
+              Previous Dates History
+            </h2>
+            <span id="archive-count-badge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">0 days</span>
+          </div>
+          <div id="recent-archives-list" class="space-y-1.5"></div>
+        </div>
+
+        <!-- Uploaded Task Sheets History -->
+        <div>
+          <div class="flex items-center justify-between mb-2 px-1">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="sheet" class="w-3.5 h-3.5 text-emerald-500"></i>
+              Synced Task Sheets
+            </h2>
+          </div>
+          <div id="uploaded-sheets-list" class="space-y-1.5 text-xs"></div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar Footer: End of Evening Wrap-Up & Reset -->
+      <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 space-y-2.5">
+        <button onclick="openEndOfDayModal()" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2 transition cursor-pointer">
+          <i data-lucide="moon-star" class="w-4 h-4"></i>
+          <span>Complete Day &amp; Archive Today</span>
+        </button>
+        <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+          <button onclick="exportCurrentViewCSV()" class="hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 transition cursor-pointer">
+            <i data-lucide="download" class="w-3 h-3"></i> Export CSV
+          </button>
+          <span class="text-[10px] font-mono text-slate-400" title="Keyboard Shortcuts: N (New), / (Search), Esc (Close)">Keys: N · / · Esc</span>
+          <button onclick="confirmResetDemo()" class="hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 transition cursor-pointer">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN WORKSPACE -->
+    <main class="flex-1 min-w-0 flex flex-col">
+
+      <!-- Top Action & Day Timeline Switcher Bar -->
+      <div class="sticky top-0 z-20 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-3.5">
+        <div class="max-w-6xl mx-auto flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+
+          <!-- Timeline Segmented Switcher (Yesterday | Today | Tomorrow | Insights) -->
+          <div class="inline-flex items-center p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 self-start overflow-x-auto max-w-full">
+            <button id="tab-yesterday" onclick="switchDayView('yesterday')" class="day-tab px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <i data-lucide="rewind" class="w-3.5 h-3.5"></i>
+              <span>Yesterday</span>
+              <span id="badge-yesterday" class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700">0%</span>
+            </button>
+            <button id="tab-today" onclick="switchDayView('today')" class="day-tab px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+              <span>Today</span>
+              <span id="badge-today" class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">0%</span>
+            </button>
+            <button id="tab-tomorrow" onclick="switchDayView('tomorrow')" class="day-tab px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <span>Tomorrow</span>
+              <i data-lucide="fast-forward" class="w-3.5 h-3.5"></i>
+              <span id="badge-tomorrow" class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700">0</span>
+            </button>
+            <div class="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0"></div>
+            <button id="tab-insights" onclick="openInsightsModal()" class="px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-900/60 transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-indigo-500"></i>
+              <span>Insights</span>
+            </button>
+          </div>
+
+          <!-- Right Sheet, Routines & Theme Actions -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="openRoutinesModal()" class="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/60 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="repeat" class="w-4 h-4"></i>
+              <span>Routines</span>
+            </button>
+            <button onclick="openSheetModal()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm shadow-emerald-600/20 flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Upload Sheet / CSV</span>
+            </button>
+            <button onclick="exportCurrentViewCSV()" class="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-medium flex items-center gap-1.5 transition cursor-pointer" title="Download CSV for Google Sheets">
+              <i data-lucide="download" class="w-4 h-4 text-slate-500"></i>
+              <span class="hidden sm:inline">Export</span>
+            </button>
+            <button onclick="toggleTheme()" class="hidden lg:flex p-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition cursor-pointer" title="Toggle Dark/Light Theme">
+              <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+              <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workspace Body -->
+      <div class="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Historical Date Banner (Shown when user clicks any past date in Calendar) -->
+        <div id="archive-banner" class="hidden rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <i data-lucide="archive" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Historical Archive View</span>
+                <span id="archive-banner-score" class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-800 text-amber-900 dark:text-amber-100">80% Completed</span>
+              </div>
+              <p id="archive-banner-subtitle" class="text-sm font-semibold text-slate-800 dark:text-slate-100 mt-0.5">Viewing tasks for November 20, 2026</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="copyUnfinishedArchiveToToday()" class="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-xs font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100/60 transition cursor-pointer">
+              Copy Unfinished to Today
+            </button>
+            <button onclick="switchDayView('today')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition cursor-pointer">
+              Back to Today
+            </button>
+          </div>
+        </div>
+
+        <!-- Header Title & Date Context -->
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+              <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+              <span id="active-date-display">Tuesday, November 24, 2026</span>
+            </div>
+            <h2 id="active-view-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white mt-1">
+              Today's Execution Board
+            </h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="copyEODReportToClipboard()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="clipboard-check" class="w-3.5 h-3.5 text-indigo-500"></i>
+              <span>Copy EOD Report</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- LIVE COMPLETION & REMAINING PERCENTAGE ANALYTICS -->
+        <section class="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+          <!-- Card 1: Live Progress Ring & Completed vs Remaining Percentages -->
+          <div class="md:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center gap-5">
+            <!-- SVG Ring -->
+            <div class="relative w-28 h-28 shrink-0 flex items-center justify-center">
+              <svg class="w-28 h-28" viewBox="0 0 100 100">
+                <circle class="text-slate-100 dark:text-slate-800" stroke-width="10" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" />
+                <circle id="completion-ring-circle" class="progress-ring-circle text-emerald-500" stroke-width="10" stroke-dasharray="251.327" stroke-dashoffset="251.327" stroke-linecap="round" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span id="ring-percent-text" class="font-mono text-2xl font-extrabold tracking-tight">0%</span>
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Done</span>
+              </div>
+            </div>
+
+            <!-- Percentage Split Bars -->
+            <div class="flex-1 w-full space-y-3.5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Live Completion Split</span>
+                <span id="total-tasks-pill" class="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">0 Total Tasks</span>
+              </div>
+
+              <!-- Completed % Bar -->
+              <div>
+                <div class="flex items-center justify-between text-xs font-semibold mb-1">
+                  <span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                    Completed Tasks
+                  </span>
+                  <span id="completed-stat-label" class="font-mono font-bold text-slate-800 dark:text-slate-100">0% (0/0)</span>
+                </div>
+                <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div id="completed-bar-fill" class="h-full rounded-full bg-emerald-500 transition-all duration-500" style="width: 0%"></div>
+                </div>
+              </div>
+
+              <!-- Remaining / Non-Completed % Bar -->
+              <div>
+                <div class="flex items-center justify-between text-xs font-semibold mb-1">
+                  <span class="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                    Remaining (Non-Completed)
+                  </span>
+                  <span id="remaining-stat-label" class="font-mono font-bold text-slate-800 dark:text-slate-100">0% (0/0)</span>
+                </div>
+                <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div id="remaining-bar-fill" class="h-full rounded-full bg-amber-500 transition-all duration-500" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Category Workstream Breakdown & Quick Rollover -->
+          <div class="md:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Category Progress</span>
+                <button onclick="openInsightsModal()" class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">Full Trends &rarr;</button>
+              </div>
+              <div id="category-breakdown-list" class="space-y-2.5 max-h-28 overflow-y-auto pr-1"></div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <button id="context-rollover-btn" onclick="handleSmartRollover()" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1.5 cursor-pointer">
+                <i data-lucide="arrow-right-circle" class="w-3.5 h-3.5"></i>
+                <span id="context-rollover-label">Move Unfinished to Tomorrow</span>
+              </button>
+              <button onclick="markAllVisibleDone()" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 flex items-center gap-1 cursor-pointer">
+                <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                <span>Complete All</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ADD NEW TASK FORM -->
+        <section id="task-creator-section" class="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs">
+          <form id="add-task-form" onsubmit="handleAddTask(event)" class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+              <div class="flex-1 relative">
+                <input
+                  type="text"
+                  id="task-title-input"
+                  required
+                  placeholder="Press 'N' anywhere to add a task... (e.g., Audit Q4 backlink outreach sheet)"
+                  class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-slate-400"
+                />
+              </div>
+              <button
+                type="submit"
+                class="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-sm shadow-indigo-600/20 flex items-center justify-center gap-2 shrink-0 transition cursor-pointer"
+              >
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span id="add-task-btn-text">Add to Today</span>
+              </button>
+            </div>
+
+            <!-- Metadata Row: Category, Priority, Time Slot, Optional Note -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              <div>
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+                <select id="task-category-input" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="Work">Work</option>
+                  <option value="Growth">Growth</option>
+                  <option value="Outreach">Outreach</option>
+                  <option value="SEO & Content">SEO &amp; Content</option>
+                  <option value="Sheets & Ops">Sheets &amp; Ops</option>
+                  <option value="Personal">Personal</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Priority</label>
+                <select id="task-priority-input" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="High">High Priority</option>
+                  <option value="Medium" selected>Medium Priority</option>
+                  <option value="Low">Low Priority</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Target Time</label>
+                <input type="text" id="task-time-input" placeholder="e.g., 5:00 PM" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Quick Note / Sheet Ref</label>
+                <input type="text" id="task-note-input" placeholder="Optional details..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <!-- BULK SELECTION ACTION BAR (Appears when 1+ tasks are selected) -->
+        <section id="bulk-action-bar" class="hidden rounded-2xl bg-indigo-600 text-white px-4 py-3 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 text-xs font-bold">
+            <span id="bulk-selected-count" class="px-2.5 py-1 rounded-lg bg-white/20 font-mono">0 selected</span>
+            <span>Bulk Actions:</span>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="bulkCompleteSelected()" class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-semibold flex items-center gap-1 transition cursor-pointer">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Complete
+            </button>
+            <button onclick="bulkMoveToTomorrow()" class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold flex items-center gap-1 transition cursor-pointer">
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i> Move to Tomorrow
+            </button>
+            <select onchange="bulkChangePriority(this.value); this.value='';" class="px-2.5 py-1.5 rounded-xl bg-white/15 text-white text-xs font-semibold focus:outline-none cursor-pointer">
+              <option value="" class="text-slate-900">Set Priority...</option>
+              <option value="High" class="text-slate-900">High Priority</option>
+              <option value="Medium" class="text-slate-900">Medium Priority</option>
+              <option value="Low" class="text-slate-900">Low Priority</option>
+            </select>
+            <button onclick="bulkDeleteSelected()" class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-semibold flex items-center gap-1 transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+            </button>
+            <button onclick="clearBulkSelection()" class="px-2.5 py-1.5 rounded-xl text-white/80 hover:text-white text-xs font-semibold cursor-pointer">
+              Cancel
+            </button>
+          </div>
+        </section>
+
+        <!-- FILTER, PRIORITY/CATEGORY PILLS, SEARCH & SORT TOOLBAR -->
+        <section class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <!-- Status & Priority Filter Pills -->
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button onclick="setFilterStatus('all')" id="filter-all" class="filter-pill px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer">All</button>
+            <button onclick="setFilterStatus('pending')" id="filter-pending" class="filter-pill px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer">Remaining</button>
+            <button onclick="setFilterStatus('completed')" id="filter-completed" class="filter-pill px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer">Completed</button>
+            <div class="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-1"></div>
+            <select id="filter-priority-select" onchange="renderWorkspace()" class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium focus:outline-none">
+              <option value="all">Priority: All</option>
+              <option value="High">High Only</option>
+              <option value="Medium">Medium Only</option>
+              <option value="Low">Low Only</option>
+            </select>
+            <select id="filter-category-select" onchange="renderWorkspace()" class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium focus:outline-none">
+              <option value="all">Category: All</option>
+              <option value="Work">Work</option>
+              <option value="Growth">Growth</option>
+              <option value="Outreach">Outreach</option>
+              <option value="SEO & Content">SEO &amp; Content</option>
+              <option value="Sheets & Ops">Sheets &amp; Ops</option>
+              <option value="Personal">Personal</option>
+              <option value="Urgent">Urgent</option>
+            </select>
+          </div>
+
+          <!-- Search & Sort Controls -->
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1 sm:w-48">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" id="task-search-input" oninput="renderWorkspace()" placeholder="Search ('/')..." class="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <select id="task-sort-select" onchange="renderWorkspace()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="default">Sort: Manual / Drag</option>
+              <option value="priority">Sort: Highest Priority</option>
+              <option value="category">Sort: Category</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- TASK LISTS: PENDING (REMAINING) & COMPLETED SECTIONS -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+
+          <!-- Left Column: Remaining / To-Do Tasks -->
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-amber-50/40 dark:bg-amber-950/10">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <h3 class="font-bold text-sm text-slate-800 dark:text-slate-100">Remaining Tasks</h3>
+                <span class="text-[10px] text-slate-400 hidden sm:inline">(Drag to reorder)</span>
+              </div>
+              <span id="pending-column-badge" class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">0 tasks • 0%</span>
+            </div>
+            <div id="pending-tasks-container" class="p-3.5 space-y-2.5 min-h-[180px]"></div>
+          </div>
+
+          <!-- Right Column: Evening Completed Tasks -->
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-emerald-50/40 dark:bg-emerald-950/10">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <h3 class="font-bold text-sm text-slate-800 dark:text-slate-100">Completed Tasks</h3>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="completed-column-badge" class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">0 tasks • 0%</span>
+                <button onclick="clearCompletedInView()" class="text-[11px] text-slate-400 hover:text-rose-500 transition cursor-pointer" title="Clear completed tasks">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+            <div id="completed-tasks-container" class="p-3.5 space-y-2.5 min-h-[180px]"></div>
+          </div>
+
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: UPLOAD TASK SHEET / GOOGLE SHEETS WITH COLUMN MAPPER         -->
+  <!-- ===================================================================== -->
+  <div id="sheet-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">Upload Task Sheet / Google Sheets Sync</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Supports multi-date sheets, custom column mapping, CSV files &amp; direct copy-paste.</p>
+          </div>
+        </div>
+        <button onclick="closeSheetModal()" class="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Import Method Tabs -->
+      <div class="px-6 pt-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 overflow-x-auto">
+        <button onclick="switchSheetTab('file')" id="sheet-tab-file" class="sheet-tab px-4 py-2.5 text-xs font-semibold border-b-2 transition cursor-pointer whitespace-nowrap">1. Upload CSV / Excel Sheet</button>
+        <button onclick="switchSheetTab('paste')" id="sheet-tab-paste" class="sheet-tab px-4 py-2.5 text-xs font-semibold border-b-2 transition cursor-pointer whitespace-nowrap">2. Paste from Google Sheets</button>
+        <button onclick="switchSheetTab('url')" id="sheet-tab-url" class="sheet-tab px-4 py-2.5 text-xs font-semibold border-b-2 transition cursor-pointer whitespace-nowrap">3. Google Sheet CSV Link</button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-5 flex-1">
+
+        <!-- Target Day Selector -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/70">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Date Routing Mode</label>
+            <select id="sheet-target-day" onchange="reparseWithCurrentMapping()" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+              <option value="auto">Auto-route via Sheet Date/Day Column (Default: Today)</option>
+              <option value="today">Force All to Today (Nov 24, 2026)</option>
+              <option value="yesterday">Force All to Yesterday (Nov 23, 2026)</option>
+              <option value="tomorrow">Force All to Tomorrow (Nov 25, 2026)</option>
+            </select>
+          </div>
+          <div class="flex flex-col justify-end">
+            <button onclick="downloadSampleTemplateCSV()" class="w-full py-2 px-3 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center justify-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
+              <span>Download Multi-Date CSV Template</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 1: CSV File Dropzone -->
+        <div id="sheet-panel-file" class="space-y-3">
+          <div
+            id="csv-dropzone"
+            onclick="document.getElementById('csv-file-input').click()"
+            class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-2xl p-7 text-center cursor-pointer transition bg-slate-50/50 dark:bg-slate-800/30"
+          >
+            <input type="file" id="csv-file-input" accept=".csv,.tsv,.txt" class="hidden" onchange="handleCSVFileSelected(event)" />
+            <div class="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center mb-3">
+              <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-800 dark:text-slate-100">Click to upload or drag &amp; drop your Task Sheet</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Supports multi-day Google Sheets exported <code class="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700">.csv</code> or <code class="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700">.tsv</code> files</p>
+          </div>
+        </div>
+
+        <!-- TAB 2: Paste from Google Sheets -->
+        <div id="sheet-panel-paste" class="hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">Copy rows from Google Sheets (Ctrl+C) and paste below (Ctrl+V):</label>
+            <button onclick="fillSampleGoogleSheetPaste()" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">Load Multi-Day Sample</button>
+          </div>
+          <textarea
+            id="google-sheet-paste-area"
+            rows="5"
+            oninput="previewPastedSheetData()"
+            placeholder="Task	Category	Priority	Status	Date	Notes&#10;Finalize monthly SEO audit sheet	SEO & Content	High	Completed	Today	Client A & B&#10;Send 25 outreach follow-up emails	Outreach	Medium	Pending	Today	Batch #4&#10;Prepare tomorrow sprint backlog	Work	High	Pending	Tomorrow	Morning standup"
+            class="w-full p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          ></textarea>
+        </div>
+
+        <!-- TAB 3: Published Google Sheet CSV URL -->
+        <div id="sheet-panel-url" class="hidden space-y-3">
+          <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            In Google Sheets, click <strong>File &rarr; Share &rarr; Publish to web</strong>, choose <strong>Comma-separated values (.csv)</strong>, and paste the link below:
+          </p>
+          <div class="flex gap-2">
+            <input type="url" id="google-sheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <button onclick="fetchPublishedGoogleSheet()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0 cursor-pointer">Fetch Sheet</button>
+          </div>
+        </div>
+
+        <!-- Interactive Column Mapper (Appears when sheet rows are loaded) -->
+        <div id="sheet-column-mapper" class="hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+              <i data-lucide="columns-3" class="w-4 h-4 text-indigo-500"></i>
+              Google Sheet Column Mapper
+            </span>
+            <span class="text-[11px] text-slate-400">Adjust if your headers differ</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Task Title *</label>
+              <select id="map-col-title" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Date / Day</label>
+              <select id="map-col-day" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Status</label>
+              <select id="map-col-status" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Category</label>
+              <select id="map-col-category" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Priority</label>
+              <select id="map-col-priority" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold uppercase text-slate-400 mb-0.5">Notes / Time</label>
+              <select id="map-col-note" onchange="reparseWithCurrentMapping()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Parsed Preview Box -->
+        <div id="sheet-preview-box" class="hidden rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span id="sheet-preview-count">0 tasks parsed &amp; ready to import</span>
+            </span>
+            <span id="sheet-filename-badge" class="text-[11px] font-mono text-slate-500">Google_Sheet_Sync.csv</span>
+          </div>
+          <div id="sheet-preview-table" class="max-h-36 overflow-y-auto text-xs divide-y divide-emerald-200/50 dark:divide-emerald-800/40"></div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-end gap-2.5">
+        <button onclick="closeSheetModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 cursor-pointer">Cancel</button>
+        <button id="confirm-import-btn" onclick="commitSheetImport()" disabled class="px-5 py-2 rounded-xl bg-emerald-600 disabled:opacity-40 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm cursor-pointer">
+          Import Tasks into Workspace
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: END OF EVENING DAY ROLLOVER & ARCHIVE CONFIRMATION           -->
+  <!-- ===================================================================== -->
+  <div id="eod-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+      <div class="p-6 space-y-4">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+          <i data-lucide="moon-star" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">End of Evening Wrap-Up</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            Save Today's (<strong id="eod-date-label">Nov 24, 2026</strong>) completion score into the Previous Calendar archive and prepare your next day.
+          </p>
+        </div>
+
+        <!-- Summary Snapshot -->
+        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 space-y-2 text-xs">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Completed Today:</span>
+            <span id="eod-completed-summary" class="font-mono font-bold text-emerald-600 dark:text-emerald-400">0 tasks (0%)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Remaining / Unfinished:</span>
+            <span id="eod-remaining-summary" class="font-mono font-bold text-amber-600 dark:text-amber-400">0 tasks (0%)</span>
+          </div>
+        </div>
+
+        <label class="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40">
+          <input type="checkbox" id="eod-carry-forward" checked class="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500" />
+          <span class="text-xs text-slate-700 dark:text-slate-300">
+            <strong>Carry forward unfinished tasks to Tomorrow</strong> so nothing slips through the cracks.
+          </span>
+        </label>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Evening Reflection Note (Optional)</label>
+          <input type="text" id="eod-note-input" placeholder="e.g., Finished all outreach sheets ahead of schedule!" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-end gap-2">
+        <button onclick="closeEndOfDayModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 cursor-pointer">Cancel</button>
+        <button onclick="executeEndOfDayArchive()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm cursor-pointer">
+          Archive to Calendar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 3: INSIGHTS & STREAK ANALYTICS DASHBOARD                        -->
+  <!-- ===================================================================== -->
+  <div id="insights-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">Productivity Insights &amp; Completion Trends</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Track your daily completion streak, multi-day ratios, and standup report.</p>
+          </div>
+        </div>
+        <button onclick="closeInsightsModal()" class="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6">
+        <!-- Top KPI Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/50">
+            <div class="text-[11px] font-bold uppercase text-amber-700 dark:text-amber-400">Current Streak</div>
+            <div id="insight-current-streak" class="font-mono text-2xl font-extrabold text-slate-900 dark:text-white mt-1">3 Days</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">&ge; 80% daily completion</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
+            <div class="text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-400">Best Streak</div>
+            <div id="insight-best-streak" class="font-mono text-2xl font-extrabold text-slate-900 dark:text-white mt-1">5 Days</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">All-time record</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
+            <div class="text-[11px] font-bold uppercase text-emerald-700 dark:text-emerald-400">7-Day Avg Rate</div>
+            <div id="insight-avg-rate" class="font-mono text-2xl font-extrabold text-slate-900 dark:text-white mt-1">0%</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Completed vs Remaining</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
+            <div class="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Focus Logged</div>
+            <div id="insight-focus-mins" class="font-mono text-2xl font-extrabold text-slate-900 dark:text-white mt-1">75m</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Deep work sessions</div>
+          </div>
+        </div>
+
+        <!-- 7-Day / 14-Day Completion Trend Bar Chart -->
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-5 bg-slate-50/50 dark:bg-slate-800/30">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800 dark:text-slate-100">Daily Completion vs. Remaining Ratio</h4>
+              <p class="text-xs text-slate-500">Hover any bar to inspect exact completed &amp; remaining counts</p>
+            </div>
+            <div class="inline-flex rounded-xl bg-white dark:bg-slate-900 p-1 border border-slate-200 dark:border-slate-700 self-start">
+              <button onclick="setTrendRange(7)" id="trend-btn-7" class="px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer">7 Days</button>
+              <button onclick="setTrendRange(14)" id="trend-btn-14" class="px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer">14 Days</button>
+            </div>
+          </div>
+
+          <!-- Bar Chart Container -->
+          <div id="trend-chart-container" class="h-48 flex items-end justify-between gap-2 pt-6 pb-2 px-1"></div>
+        </div>
+
+        <!-- Category Mastery + EOD Standup Report -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">All-Time Category Completion</h4>
+            <div id="insight-category-bars" class="space-y-3"></div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col justify-between bg-slate-50/60 dark:bg-slate-800/40">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Formatted Daily Standup / EOD Report</h4>
+                <button onclick="copyEODReportToClipboard()" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer">
+                  <i data-lucide="copy" class="w-3 h-3"></i> Copy
+                </button>
+              </div>
+              <pre id="eod-report-preview" class="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 4: RECURRING DAILY ROUTINES & STARTER TEMPLATES                 -->
+  <!-- ===================================================================== -->
+  <div id="routines-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <i data-lucide="repeat" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">Daily Routines &amp; Quick Templates</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Save recurring checklists or inject pre-built workflows into Today or Tomorrow in 1 click.</p>
+          </div>
+        </div>
+        <button onclick="closeRoutinesModal()" class="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6">
+        <!-- Add Custom Routine -->
+        <form onsubmit="handleAddCustomRoutine(event)" class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 space-y-3">
+          <div class="text-xs font-bold text-slate-700 dark:text-slate-200">Create Reusable Daily Routine Task</div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="routine-title-input" required placeholder="e.g., Morning standup & inbox zero triage" class="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <select id="routine-category-input" class="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">
+              <option value="Work">Work</option>
+              <option value="Growth">Growth</option>
+              <option value="Sheets & Ops">Sheets &amp; Ops</option>
+              <option value="Personal">Personal</option>
+            </select>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 cursor-pointer">
+              Save Routine
+            </button>
+          </div>
+        </form>
+
+        <!-- Saved Routines List -->
+        <div>
+          <div class="flex items-center justify-between mb-2.5">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Your Recurring Routines</h4>
+            <div class="flex items-center gap-2">
+              <button onclick="injectAllRoutines('today')" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold cursor-pointer">+ Add All to Today</button>
+              <button onclick="injectAllRoutines('tomorrow')" class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold cursor-pointer">+ Add All to Tomorrow</button>
+            </div>
+          </div>
+          <div id="routines-list-container" class="space-y-2"></div>
+        </div>
+
+        <!-- Built-In Starter Templates -->
+        <div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">1-Click Workflow Templates</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-3">
+              <div>
+                <div class="text-xs font-bold text-slate-800 dark:text-slate-100">Daily Ops Checklist</div>
+                <p class="text-[11px] text-slate-500 mt-1">3 tasks: Sheet sync, CRM hygiene &amp; EOD metrics wrap-up.</p>
+              </div>
+              <button onclick="applyStarterTemplate('ops')" class="w-full py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-xs font-semibold transition cursor-pointer">Inject into Active Day</button>
+            </div>
+            <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-3">
+              <div>
+                <div class="text-xs font-bold text-slate-800 dark:text-slate-100">Deep Work Sprint</div>
+                <p class="text-[11px] text-slate-500 mt-1">3 tasks: 90m core build block, zero-notif review &amp; spec writeup.</p>
+              </div>
+              <button onclick="applyStarterTemplate('deepwork')" class="w-full py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-xs font-semibold transition cursor-pointer">Inject into Active Day</button>
+            </div>
+            <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-3">
+              <div>
+                <div class="text-xs font-bold text-slate-800 dark:text-slate-100">Weekly Growth Review</div>
+                <p class="text-[11px] text-slate-500 mt-1">3 tasks: Funnel sheet audit, outreach velocity &amp; next week goals.</p>
+              </div>
+              <button onclick="applyStarterTemplate('weekly')" class="w-full py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-xs font-semibold transition cursor-pointer">Inject into Active Day</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- APPLICATION LOGIC                                                     -->
+  <!-- ===================================================================== -->
+  <script>
+    // Anchor dates aligned with current context: Tuesday, Nov 24, 2026
+    const DATE_KEYS = {
+      yesterday: '2026-11-23',
+      today: '2026-11-24',
+      tomorrow: '2026-11-25'
+    };
+
+    const STORAGE_KEY = 'chronosheet_v2_state';
+
+    function getDefaultState() {
+      return {
+        activeView: 'today', // 'yesterday' | 'today' | 'tomorrow' | 'archive'
+        selectedArchiveDate: null,
+        calendarMonth: 10, // 0-indexed: 10 = November
+        calendarYear: 2026,
+        filterStatus: 'all',
+        darkMode: false,
+        trendDays: 7,
+        routines: [
+          { id: 'rt-1', title: 'Morning standup & Google Sheet priority check', category: 'Sheets & Ops', priority: 'High' },
+          { id: 'rt-2', title: 'Inbox zero triage & urgent client follow-ups', category: 'Work', priority: 'Medium' },
+          { id: 'rt-3', title: 'Evening completion check-off & archive to calendar', category: 'Personal', priority: 'Medium' }
+        ],
+        uploadedSheets: [
+          { id: 'sh-1', name: 'Q4_Growth_Outreach_Master.csv', date: '2026-11-24', count: 6 },
+          { id: 'sh-2', name: 'Weekly_SEO_Sprint_Nov.csv', date: '2026-11-23', count: 5 }
+        ],
+        tasksByDate: {
+          '2026-11-18': [
+            { id: 't-18-1', title: 'Export keyword gap report from Google Sheets', category: 'SEO & Content', priority: 'High', time: '10:30 AM', note: '120 target keywords', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-18-2', title: 'Review agency guest post placements', category: 'Outreach', priority: 'Medium', time: '2:00 PM', note: 'Verified DA 50+ domains', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-18-3', title: 'Team standup & sprint velocity check', category: 'Work', priority: 'Low', time: '4:30 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] }
+          ],
+          '2026-11-19': [
+            { id: 't-19-1', title: 'Clean CRM lead rows & deduplicate CSV', category: 'Sheets & Ops', priority: 'High', time: '11:00 AM', note: '450 rows processed', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-19-2', title: 'Draft 5 personalized pitch templates', category: 'Growth', priority: 'High', time: '3:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-19-3', title: 'Update client billing tracker sheet', category: 'Work', priority: 'Medium', time: '5:30 PM', note: 'Pending invoice #104', completed: false, focusMinutes: 0, subtasks: [] }
+          ],
+          '2026-11-20': [
+            { id: 't-20-1', title: 'Publish technical SEO audit findings', category: 'SEO & Content', priority: 'High', time: '12:00 PM', note: 'Core Web Vitals fixed', completed: true, focusMinutes: 50, subtasks: [] },
+            { id: 't-20-2', title: 'Sync campaign UTM parameters in Master Sheet', category: 'Sheets & Ops', priority: 'Medium', time: '4:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-20-3', title: 'Evening gym & mobility session', category: 'Personal', priority: 'Low', time: '7:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-20-4', title: 'Send weekly stakeholder recap', category: 'Work', priority: 'Medium', time: '6:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] }
+          ],
+          '2026-11-21': [
+            { id: 't-21-1', title: 'Analyze competitor backlink velocity CSV', category: 'SEO & Content', priority: 'High', time: '11:30 AM', note: '', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-21-2', title: 'Follow up with 15 warm editorial leads', category: 'Outreach', priority: 'High', time: '3:30 PM', note: '6 replies received', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-21-3', title: 'Organize Google Drive folder permissions', category: 'Sheets & Ops', priority: 'Low', time: '5:00 PM', note: '', completed: false, focusMinutes: 0, subtasks: [] }
+          ],
+          '2026-11-22': [
+            { id: 't-22-1', title: 'Prepare weekly KPI summary sheet', category: 'Sheets & Ops', priority: 'High', time: '11:00 AM', note: 'All metrics reconciled', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-22-2', title: 'Deep clean workspace & plan Monday sprint', category: 'Personal', priority: 'Medium', time: '4:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] }
+          ],
+          // YESTERDAY (Nov 23, 2026)
+          '2026-11-23': [
+            { id: 't-y-1', title: 'Import & verify Monday outreach sheet rows', category: 'Sheets & Ops', priority: 'High', time: '10:00 AM', note: 'Synced from Google Sheets', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-y-2', title: 'Complete 25 cold outreach emails for SaaS campaign', category: 'Outreach', priority: 'High', time: '1:30 PM', note: 'Batch #3 complete', completed: true, focusMinutes: 25, subtasks: [] },
+            { id: 't-y-3', title: 'Optimize meta descriptions for 8 landing pages', category: 'SEO & Content', priority: 'Medium', time: '4:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] },
+            { id: 't-y-4', title: 'Reconcile ad spend variance in budget sheet', category: 'Work', priority: 'High', time: '6:15 PM', note: 'Need Q4 conversion numbers', completed: false, focusMinutes: 0, subtasks: [] },
+            { id: 't-y-5', title: 'Read 25 pages of product strategy book', category: 'Personal', priority: 'Low', time: '9:00 PM', note: '', completed: true, focusMinutes: 0, subtasks: [] }
+          ],
+          // TODAY (Nov 24, 2026)
+          '2026-11-24': [
+            {
+              id: 't-td-1',
+              title: 'Review morning Google Sheet task allocations',
+              category: 'Sheets & Ops',
+              priority: 'High',
+              time: '9:30 AM',
+              note: 'Q4_Growth_Outreach_Master.csv',
+              completed: true,
+              focusMinutes: 25,
+              subtasks: [
+                { id: 'st-1', text: 'Verify owner tags in column C', done: true },
+                { id: 'st-2', text: 'Check high-priority deadlines', done: true }
+              ]
+            },
+            {
+              id: 't-td-2',
+              title: 'Send 30 high-priority outreach pitches & log responses',
+              category: 'Outreach',
+              priority: 'High',
+              time: '12:30 PM',
+              note: 'Update status column in sheet',
+              completed: true,
+              focusMinutes: 50,
+              subtasks: []
+            },
+            {
+              id: 't-td-3',
+              title: 'Finalize on-page content brief for pillar article',
+              category: 'SEO & Content',
+              priority: 'Medium',
+              time: '3:00 PM',
+              note: '2,400 words outline',
+              completed: true,
+              focusMinutes: 0,
+              subtasks: []
+            },
+            {
+              id: 't-td-4',
+              title: 'Audit conversion tracking tags before evening launch',
+              category: 'Urgent',
+              priority: 'High',
+              time: '6:30 PM',
+              note: 'Verify GA4 events & GTM triggers',
+              completed: false,
+              focusMinutes: 0,
+              subtasks: [
+                { id: 'st-3', text: 'Test signup form conversion pixel', done: true },
+                { id: 'st-4', text: 'Verify sheet webhook payload', done: false }
+              ]
+            },
+            {
+              id: 't-td-5',
+              title: 'Update evening completion status & export daily sheet',
+              category: 'Work',
+              priority: 'Medium',
+              time: '8:45 PM',
+              note: 'End of day wrap-up',
+              completed: false,
+              focusMinutes: 0,
+              subtasks: []
+            },
+            {
+              id: 't-td-6',
+              title: '30-minute evening walk & screen break',
+              category: 'Personal',
+              priority: 'Low',
+              time: '9:30 PM',
+              note: '',
+              completed: false,
+              focusMinutes: 0,
+              subtasks: []
+            }
+          ],
+          // TOMORROW (Nov 25, 2026)
+          '2026-11-25': [
+            { id: 't-tm-1', title: 'Kickoff Wednesday client performance review call', category: 'Work', priority: 'High', time: '10:00 AM', note: 'Share live completion metrics', completed: false, focusMinutes: 0, subtasks: [] },
+            { id: 't-tm-2', title: 'Upload fresh prospect list from Google Sheets', category: 'Sheets & Ops', priority: 'Medium', time: '1:00 PM', note: '', completed: false, focusMinutes: 0, subtasks: [] },
+            { id: 't-tm-3', title: 'Publish internal linking optimization batch', category: 'SEO & Content', priority: 'Medium', time: '4:00 PM', note: '', completed: false, focusMinutes: 0, subtasks: [] }
+          ]
+        },
+        dayNotes: {
+          '2026-11-18': '100% completion achieved! Strong momentum.',
+          '2026-11-20': 'All weekly deliverables wrapped before weekend.',
+          '2026-11-23': '80% completed — 1 budget task carried over.'
+        }
+      };
+    }
+
+    let appState = loadState();
+    let selectedTaskIds = new Set();
+    let expandedSubtaskIds = new Set(['t-td-4']);
+    let lastUndoSnapshot = null;
+
+    // Sheet import state
+    let rawSheetRows = [];
+    let sheetHeaders = [];
+    let pendingImportedTasks = [];
+    let pendingImportedFileName = 'Uploaded_Sheet.csv';
+
+    // Focus timer state
+    let focusState = {
+      taskId: null,
+      taskTitle: '',
+      durationMins: 25,
+      secondsLeft: 25 * 60,
+      running: false,
+      intervalId: null
+    };
+
+    // Drag and drop state
+    let draggedTaskId = null;
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return getDefaultState();
+        const parsed = JSON.parse(raw);
+        return { ...getDefaultState(), ...parsed };
+      } catch (e) {
+        console.error('Failed to load state:', e);
+        return getDefaultState();
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        console.error('Failed to save state:', e);
+      }
+    }
+
+    function pushUndoSnapshot() {
+      lastUndoSnapshot = JSON.parse(JSON.stringify(appState.tasksByDate));
+    }
+
+    function triggerUndo() {
+      if (!lastUndoSnapshot) return;
+      appState.tasksByDate = lastUndoSnapshot;
+      lastUndoSnapshot = null;
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      showToast('Action undone!', 'info');
+    }
+
+    // =========================================================================
+    // DATE & STATS HELPERS
+    // =========================================================================
+    function getActiveDateKey() {
+      if (appState.activeView === 'archive' && appState.selectedArchiveDate) {
+        return appState.selectedArchiveDate;
+      }
+      return DATE_KEYS[appState.activeView] || DATE_KEYS.today;
+    }
+
+    function formatHumanDate(isoDate) {
+      const [y, m, d] = isoDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    }
+
+    function formatShortDate(isoDate) {
+      const [y, m, d] = isoDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function computeStatsForDate(isoDate) {
+      const list = appState.tasksByDate[isoDate] || [];
+      const total = list.length;
+      const completed = list.filter(t => t.completed).length;
+      const remaining = total - completed;
+      const completedPct = total === 0 ? 0 : Math.round((completed / total) * 100);
+      const remainingPct = total === 0 ? 0 : 100 - completedPct;
+      return { total, completed, remaining, completedPct, remainingPct };
+    }
+
+    function computeStreaks() {
+      // Check consecutive days up to yesterday/today with >= 80% completion
+      const pastDates = Object.keys(appState.tasksByDate)
+        .filter(d => d <= DATE_KEYS.today && (appState.tasksByDate[d] || []).length > 0)
+        .sort((a, b) => a.localeCompare(b));
+
+      let bestStreak = 0;
+      let running = 0;
+      pastDates.forEach(d => {
+        const s = computeStatsForDate(d);
+        if (s.completedPct >= 80) {
+          running++;
+          if (running > bestStreak) bestStreak = running;
+        } else if (d !== DATE_KEYS.today) {
+          running = 0;
+        }
+      });
+
+      // Current streak counting backwards from yesterday (and including today if >=80%)
+      let currentStreak = 0;
+      const todayStats = computeStatsForDate(DATE_KEYS.today);
+      if (todayStats.total > 0 && todayStats.completedPct >= 80) {
+        currentStreak++;
+      }
+      const beforeToday = pastDates.filter(d => d < DATE_KEYS.today).reverse();
+      for (const d of beforeToday) {
+        const s = computeStatsForDate(d);
+        if (s.completedPct >= 80) currentStreak++;
+        else break;
+      }
+
+      return { currentStreak, bestStreak: Math.max(bestStreak, currentStreak) };
+    }
+
+    // =========================================================================
+    // THEME & SIDEBAR NAVIGATION
+    // =========================================================================
+    function applyTheme() {
+      const html = document.documentElement;
+      if (appState.darkMode) {
+        html.classList.add('dark');
+      } else {
+        html.classList.remove('dark');
+      }
+    }
+
+    function toggleTheme() {
+      appState.darkMode = !appState.darkMode;
+      applyTheme();
+      saveState();
+      lucide.createIcons();
+    }
+
+    document.getElementById('mobile-sidebar-btn').addEventListener('click', () => {
+      document.getElementById('left-sidebar').classList.remove('-translate-x-full');
+      document.getElementById('sidebar-backdrop').classList.remove('hidden');
+    });
+
+    function closeMobileSidebar() {
+      document.getElementById('left-sidebar').classList.add('-translate-x-full');
+      document.getElementById('sidebar-backdrop').classList.add('hidden');
+    }
+
+    // =========================================================================
+    // VIEW SWITCHING (YESTERDAY / TODAY / TOMORROW / ARCHIVE DATE)
+    // =========================================================================
+    function switchDayView(view) {
+      appState.activeView = view;
+      selectedTaskIds.clear();
+      if (view !== 'archive') {
+        appState.selectedArchiveDate = null;
+      }
+      saveState();
+      renderAll();
+      closeMobileSidebar();
+    }
+
+    function openArchiveDate(isoDate) {
+      if (isoDate === DATE_KEYS.today) return switchDayView('today');
+      if (isoDate === DATE_KEYS.yesterday) return switchDayView('yesterday');
+      if (isoDate === DATE_KEYS.tomorrow) return switchDayView('tomorrow');
+      appState.activeView = 'archive';
+      appState.selectedArchiveDate = isoDate;
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      closeMobileSidebar();
+    }
+
+    // =========================================================================
+    // TASK CRUD, SUBTASKS, BULK ACTIONS & DRAG-AND-DROP
+    // =========================================================================
+    function handleAddTask(event) {
+      event.preventDefault();
+      const titleInput = document.getElementById('task-title-input');
+      const categoryInput = document.getElementById('task-category-input');
+      const priorityInput = document.getElementById('task-priority-input');
+      const timeInput = document.getElementById('task-time-input');
+      const noteInput = document.getElementById('task-note-input');
+
+      const title = titleInput.value.trim();
+      if (!title) return;
+
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      if (!appState.tasksByDate[dateKey]) {
+        appState.tasksByDate[dateKey] = [];
+      }
+
+      appState.tasksByDate[dateKey].unshift({
+        id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        title,
+        category: categoryInput.value,
+        priority: priorityInput.value,
+        time: timeInput.value.trim(),
+        note: noteInput.value.trim(),
+        completed: false,
+        focusMinutes: 0,
+        subtasks: []
+      });
+
+      titleInput.value = '';
+      timeInput.value = '';
+      noteInput.value = '';
+
+      saveState();
+      renderAll();
+      showToast('Task added to ' + formatShortDate(dateKey), 'success', true);
+    }
+
+    function toggleTaskCompletion(taskId) {
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      const task = list.find(t => t.id === taskId);
+      if (!task) return;
+
+      pushUndoSnapshot();
+      task.completed = !task.completed;
+      saveState();
+      renderAll();
+
+      const stats = computeStatsForDate(dateKey);
+      if (task.completed) {
+        showToast(`Completed! Live progress is now ${stats.completedPct}%`, 'success', true);
+      } else {
+        showToast('Task moved back to Remaining', 'info', true);
+      }
+    }
+
+    function deleteTask(taskId) {
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      appState.tasksByDate[dateKey] = list.filter(t => t.id !== taskId);
+      selectedTaskIds.delete(taskId);
+      saveState();
+      renderAll();
+      showToast('Task deleted', 'info', true);
+    }
+
+    function moveTaskToDate(taskId, targetDateKey, label) {
+      pushUndoSnapshot();
+      const sourceDateKey = getActiveDateKey();
+      const sourceList = appState.tasksByDate[sourceDateKey] || [];
+      const idx = sourceList.findIndex(t => t.id === taskId);
+      if (idx === -1) return;
+
+      const [task] = sourceList.splice(idx, 1);
+      task.completed = false;
+      if (!appState.tasksByDate[targetDateKey]) {
+        appState.tasksByDate[targetDateKey] = [];
+      }
+      appState.tasksByDate[targetDateKey].unshift(task);
+      selectedTaskIds.delete(taskId);
+
+      saveState();
+      renderAll();
+      showToast(`Moved task to ${label}`, 'success', true);
+    }
+
+    // Subtasks Management
+    function toggleSubtaskDrawer(taskId) {
+      if (expandedSubtaskIds.has(taskId)) expandedSubtaskIds.delete(taskId);
+      else expandedSubtaskIds.add(taskId);
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function addSubtask(event, taskId) {
+      event.preventDefault();
+      const input = document.getElementById('subtask-input-' + taskId);
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
+
+      const dateKey = getActiveDateKey();
+      const task = (appState.tasksByDate[dateKey] || []).find(t => t.id === taskId);
+      if (!task) return;
+      if (!task.subtasks) task.subtasks = [];
+
+      task.subtasks.push({
+        id: 'st-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        text,
+        done: false
+      });
+      expandedSubtaskIds.add(taskId);
+      saveState();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function toggleSubtaskItem(taskId, subId) {
+      const dateKey = getActiveDateKey();
+      const task = (appState.tasksByDate[dateKey] || []).find(t => t.id === taskId);
+      if (!task || !task.subtasks) return;
+      const sub = task.subtasks.find(s => s.id === subId);
+      if (!sub) return;
+      sub.done = !sub.done;
+      saveState();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    // Bulk Selection Actions
+    function toggleBulkSelect(taskId) {
+      if (selectedTaskIds.has(taskId)) selectedTaskIds.delete(taskId);
+      else selectedTaskIds.add(taskId);
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function clearBulkSelection() {
+      selectedTaskIds.clear();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function bulkCompleteSelected() {
+      if (selectedTaskIds.size === 0) return;
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      (appState.tasksByDate[dateKey] || []).forEach(t => {
+        if (selectedTaskIds.has(t.id)) t.completed = true;
+      });
+      const count = selectedTaskIds.size;
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      showToast(`Marked ${count} task(s) completed!`, 'success', true);
+    }
+
+    function bulkMoveToTomorrow() {
+      if (selectedTaskIds.size === 0) return;
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      const toMove = list.filter(t => selectedTaskIds.has(t.id));
+      appState.tasksByDate[dateKey] = list.filter(t => !selectedTaskIds.has(t.id));
+
+      if (!appState.tasksByDate[DATE_KEYS.tomorrow]) appState.tasksByDate[DATE_KEYS.tomorrow] = [];
+      toMove.forEach(t => {
+        t.completed = false;
+        appState.tasksByDate[DATE_KEYS.tomorrow].unshift(t);
+      });
+
+      const count = selectedTaskIds.size;
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      showToast(`Moved ${count} task(s) to Tomorrow`, 'success', true);
+    }
+
+    function bulkChangePriority(newPriority) {
+      if (!newPriority || selectedTaskIds.size === 0) return;
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      (appState.tasksByDate[dateKey] || []).forEach(t => {
+        if (selectedTaskIds.has(t.id)) t.priority = newPriority;
+      });
+      const count = selectedTaskIds.size;
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      showToast(`Updated priority to ${newPriority} for ${count} task(s)`, 'info', true);
+    }
+
+    function bulkDeleteSelected() {
+      if (selectedTaskIds.size === 0) return;
+      pushUndoSnapshot();
+      const dateKey = getActiveDateKey();
+      const count = selectedTaskIds.size;
+      appState.tasksByDate[dateKey] = (appState.tasksByDate[dateKey] || []).filter(t => !selectedTaskIds.has(t.id));
+      selectedTaskIds.clear();
+      saveState();
+      renderAll();
+      showToast(`Deleted ${count} task(s)`, 'info', true);
+    }
+
+    // Drag & Drop Reordering Handlers
+    function handleDragStart(event, taskId) {
+      draggedTaskId = taskId;
+      event.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(event) {
+      event.preventDefault();
+      event.currentTarget.classList.add('drag-over-card');
+    }
+
+    function handleDragLeave(event) {
+      event.currentTarget.classList.remove('drag-over-card');
+    }
+
+    function handleDropOnTask(event, targetTaskId) {
+      event.preventDefault();
+      event.currentTarget.classList.remove('drag-over-card');
+      if (!draggedTaskId || draggedTaskId === targetTaskId) return;
+
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      const fromIdx = list.findIndex(t => t.id === draggedTaskId);
+      const toIdx = list.findIndex(t => t.id === targetTaskId);
+      if (fromIdx === -1 || toIdx === -1) return;
+
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      draggedTaskId = null;
+      saveState();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function markAllVisibleDone() {
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      if (list.length === 0) return;
+      pushUndoSnapshot();
+      list.forEach(t => (t.completed = true));
+      saveState();
+      renderAll();
+      showToast('All tasks marked completed (100%)!', 'success', true);
+    }
+
+    function clearCompletedInView() {
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      const before = list.length;
+      if (before === 0) return;
+      pushUndoSnapshot();
+      appState.tasksByDate[dateKey] = list.filter(t => !t.completed);
+      if (appState.tasksByDate[dateKey].length !== before) {
+        saveState();
+        renderAll();
+        showToast('Cleared completed tasks from view', 'info', true);
+      }
+    }
+
+    function handleSmartRollover() {
+      const dateKey = getActiveDateKey();
+      const list = appState.tasksByDate[dateKey] || [];
+      const unfinished = list.filter(t => !t.completed);
+
+      if (unfinished.length === 0) {
+        showToast('No remaining tasks to move!', 'info');
+        return;
+      }
+
+      pushUndoSnapshot();
+      let targetKey = DATE_KEYS.tomorrow;
+      let targetLabel = 'Tomorrow';
+
+      if (appState.activeView === 'yesterday' || appState.activeView === 'archive' || appState.activeView === 'tomorrow') {
+        targetKey = DATE_KEYS.today;
+        targetLabel = 'Today';
+      }
+
+      if (!appState.tasksByDate[targetKey]) {
+        appState.tasksByDate[targetKey] = [];
+      }
+
+      if (appState.activeView === 'archive') {
+        unfinished.forEach(t => {
+          appState.tasksByDate[targetKey].unshift({
+            ...t,
+            id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+            completed: false
+          });
+        });
+      } else {
+        appState.tasksByDate[dateKey] = list.filter(t => t.completed);
+        unfinished.forEach(t => {
+          t.completed = false;
+          appState.tasksByDate[targetKey].unshift(t);
+        });
+      }
+
+      saveState();
+      renderAll();
+      showToast(`Moved ${unfinished.length} remaining task(s) to ${targetLabel}`, 'success', true);
+    }
+
+    function copyUnfinishedArchiveToToday() {
+      handleSmartRollover();
+    }
+
+    function setFilterStatus(status) {
+      appState.filterStatus = status;
+      saveState();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // SMART FOCUS TIMER (POMODORO) WITH WEB AUDIO CHIME
+    // =========================================================================
+    function startFocusForTask(taskId) {
+      const dateKey = getActiveDateKey();
+      const task = (appState.tasksByDate[dateKey] || []).find(t => t.id === taskId);
+      if (!task) return;
+
+      if (focusState.intervalId) clearInterval(focusState.intervalId);
+      focusState.taskId = task.id;
+      focusState.taskTitle = task.title;
+      focusState.secondsLeft = focusState.durationMins * 60;
+      focusState.running = true;
+
+      document.getElementById('focus-task-title').textContent = task.title;
+      document.getElementById('focus-timer-dock').classList.remove('hidden');
+      updateFocusTimerUI();
+      runFocusInterval();
+      showToast(`Started ${focusState.durationMins}m focus session`, 'info');
+    }
+
+    function setFocusDuration(mins) {
+      focusState.durationMins = mins;
+      focusState.secondsLeft = mins * 60;
+      updateFocusTimerUI();
+    }
+
+    function toggleFocusTimer() {
+      focusState.running = !focusState.running;
+      if (focusState.running) runFocusInterval();
+      else if (focusState.intervalId) clearInterval(focusState.intervalId);
+      updateFocusTimerUI();
+    }
+
+    function runFocusInterval() {
+      if (focusState.intervalId) clearInterval(focusState.intervalId);
+      focusState.intervalId = setInterval(() => {
+        if (!focusState.running) return;
+        focusState.secondsLeft--;
+        if (focusState.secondsLeft <= 0) {
+          focusState.secondsLeft = 0;
+          focusState.running = false;
+          clearInterval(focusState.intervalId);
+          playCompletionChime();
+          logFocusMinutesToTask(focusState.taskId, focusState.durationMins);
+          showToast(`Focus block complete! Logged +${focusState.durationMins}m`, 'success');
+        }
+        updateFocusTimerUI();
+      }, 1000);
+    }
+
+    function completeFocusedTask() {
+      if (focusState.taskId) {
+        const elapsedMins = Math.max(1, Math.round((focusState.durationMins * 60 - focusState.secondsLeft) / 60) || focusState.durationMins);
+        logFocusMinutesToTask(focusState.taskId, elapsedMins);
+        const dateKey = getActiveDateKey();
+        const task = (appState.tasksByDate[dateKey] || []).find(t => t.id === focusState.taskId);
+        if (task && !task.completed) {
+          toggleTaskCompletion(task.id);
+        }
+      }
+      stopFocusTimer();
+    }
+
+    function stopFocusTimer() {
+      if (focusState.intervalId) clearInterval(focusState.intervalId);
+      focusState.running = false;
+      focusState.taskId = null;
+      document.getElementById('focus-timer-dock').classList.add('hidden');
+    }
+
+    function logFocusMinutesToTask(taskId, mins) {
+      Object.values(appState.tasksByDate).forEach(list => {
+        const t = list.find(item => item.id === taskId);
+        if (t) {
+          t.focusMinutes = (t.focusMinutes || 0) + mins;
+        }
+      });
+      saveState();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    function updateFocusTimerUI() {
+      const m = Math.floor(focusState.secondsLeft / 60);
+      const s = focusState.secondsLeft % 60;
+      document.getElementById('focus-timer-display').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      const btn = document.getElementById('focus-toggle-btn');
+      btn.innerHTML = focusState.running
+        ? '<i data-lucide="pause" class="w-4 h-4"></i>'
+        : '<i data-lucide="play" class="w-4 h-4"></i>';
+      lucide.createIcons();
+    }
+
+    function playCompletionChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.35); // A5
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.65);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.65);
+      } catch (e) {
+        // Ignore audio context autoplay restrictions
+      }
+    }
+
+    // =========================================================================
+    // INSIGHTS & ANALYTICS MODAL + EOD REPORT GENERATOR
+    // =========================================================================
+    function openInsightsModal() {
+      renderInsightsModal();
+      const modal = document.getElementById('insights-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeInsightsModal() {
+      const modal = document.getElementById('insights-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function setTrendRange(days) {
+      appState.trendDays = days;
+      saveState();
+      renderInsightsModal();
+      lucide.createIcons();
+    }
+
+    function renderInsightsModal() {
+      const streaks = computeStreaks();
+      document.getElementById('insight-current-streak').textContent = `${streaks.currentStreak} Day${streaks.currentStreak === 1 ? '' : 's'}`;
+      document.getElementById('insight-best-streak').textContent = `${streaks.bestStreak} Day${streaks.bestStreak === 1 ? '' : 's'}`;
+
+      // Build date window ending on Today (2026-11-24)
+      const numDays = appState.trendDays || 7;
+      const dates = [];
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(2026, 10, 24 - i);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        dates.push(iso);
+      }
+
+      // Toggle button styles
+      [7, 14].forEach(n => {
+        const btn = document.getElementById('trend-btn-' + n);
+        if (numDays === n) {
+          btn.classList.add('bg-indigo-600', 'text-white');
+          btn.classList.remove('text-slate-600', 'dark:text-slate-300');
+        } else {
+          btn.classList.remove('bg-indigo-600', 'text-white');
+          btn.classList.add('text-slate-600', 'dark:text-slate-300');
+        }
+      });
+
+      let sumPct = 0;
+      let activeDays = 0;
+      const chartContainer = document.getElementById('trend-chart-container');
+      chartContainer.innerHTML = dates
+        .map(iso => {
+          const s = computeStatsForDate(iso);
+          if (s.total > 0) {
+            sumPct += s.completedPct;
+            activeDays++;
+          }
+          const barHeight = s.total === 0 ? 6 : Math.max(12, s.completedPct);
+          const barColor =
+            s.total === 0
+              ? 'bg-slate-200 dark:bg-slate-700'
+              : s.completedPct === 100
+              ? 'bg-emerald-500'
+              : s.completedPct >= 70
+              ? 'bg-indigo-500'
+              : 'bg-amber-500';
+
+          return `
+            <div class="flex-1 flex flex-col items-center gap-1.5 group relative h-full justify-end">
+              <div class="opacity-0 group-hover:opacity-100 transition pointer-events-none absolute -top-7 bg-slate-900 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg whitespace-nowrap z-10 shadow">
+                ${s.completedPct}% (${s.completed}/${s.total})
+              </div>
+              <span class="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">${s.total ? s.completedPct + '%' : '-'}</span>
+              <div class="w-full max-w-[34px] h-28 bg-slate-200/70 dark:bg-slate-800 rounded-xl flex items-end overflow-hidden p-0.5">
+                <div class="w-full rounded-lg transition-all duration-500 ${barColor}" style="height: ${barHeight}%"></div>
+              </div>
+              <span class="text-[10px] font-medium text-slate-500">${formatShortDate(iso).replace('Nov ', 'N')}</span>
+            </div>
+          `;
+        })
+        .join('');
+
+      const avgRate = activeDays === 0 ? 0 : Math.round(sumPct / activeDays);
+      document.getElementById('insight-avg-rate').textContent = `${avgRate}%`;
+
+      // Total focus minutes & all-time category breakdown
+      let totalFocus = 0;
+      const catTotals = {};
+      Object.values(appState.tasksByDate).forEach(list => {
+        list.forEach(t => {
+          totalFocus += t.focusMinutes || 0;
+          const c = t.category || 'Work';
+          if (!catTotals[c]) catTotals[c] = { total: 0, done: 0 };
+          catTotals[c].total++;
+          if (t.completed) catTotals[c].done++;
+        });
+      });
+
+      document.getElementById('insight-focus-mins').textContent = `${totalFocus}m`;
+
+      const catContainer = document.getElementById('insight-category-bars');
+      catContainer.innerHTML = Object.entries(catTotals)
+        .map(([cat, info]) => {
+          const pct = Math.round((info.done / info.total) * 100);
+          return `
+            <div>
+              <div class="flex justify-between text-xs font-semibold mb-1">
+                <span>${escapeHtml(cat)}</span>
+                <span class="font-mono text-slate-500">${info.done}/${info.total} (${pct}%)</span>
+              </div>
+              <div class="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full rounded-full bg-indigo-500" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      document.getElementById('eod-report-preview').textContent = buildFormattedEODReport();
+    }
+
+    function buildFormattedEODReport() {
+      const dateKey = getActiveDateKey();
+      const tasks = appState.tasksByDate[dateKey] || [];
+      const stats = computeStatsForDate(dateKey);
+      const doneList = tasks.filter(t => t.completed);
+      const remList = tasks.filter(t => !t.completed);
+
+      const lines = [
+        `📊 ChronoSheet Daily Report — ${formatHumanDate(dateKey)}`,
+        `✅ Completed: ${stats.completedPct}% (${stats.completed}/${stats.total}) | ⏳ Remaining: ${stats.remainingPct}% (${stats.remaining}/${stats.total})`,
+        ``,
+        `COMPLETED TASKS:`
+      ];
+      if (doneList.length === 0) lines.push(`• None yet`);
+      else doneList.forEach(t => lines.push(`• [x] ${t.title} (${t.category})`));
+
+      lines.push(``, `REMAINING / CARRY-OVER:`);
+      if (remList.length === 0) lines.push(`• All tasks completed!`);
+      else remList.forEach(t => lines.push(`• [ ] ${t.title} (${t.priority})`));
+
+      return lines.join('\n');
+    }
+
+    function copyEODReportToClipboard() {
+      const report = buildFormattedEODReport();
+      const ta = document.createElement('textarea');
+      ta.value = report;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('Formatted EOD Standup Report copied to clipboard!', 'success');
+    }
+
+    // =========================================================================
+    // RECURRING DAILY ROUTINES & STARTER TEMPLATES
+    // =========================================================================
+    function openRoutinesModal() {
+      renderRoutinesList();
+      const modal = document.getElementById('routines-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeRoutinesModal() {
+      const modal = document.getElementById('routines-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function handleAddCustomRoutine(event) {
+      event.preventDefault();
+      const titleInput = document.getElementById('routine-title-input');
+      const catInput = document.getElementById('routine-category-input');
+      const title = titleInput.value.trim();
+      if (!title) return;
+
+      appState.routines.push({
+        id: 'rt-' + Date.now(),
+        title,
+        category: catInput.value,
+        priority: 'Medium'
+      });
+      titleInput.value = '';
+      saveState();
+      renderRoutinesList();
+      lucide.createIcons();
+      showToast('Saved new recurring routine', 'success');
+    }
+
+    function deleteRoutine(routineId) {
+      appState.routines = appState.routines.filter(r => r.id !== routineId);
+      saveState();
+      renderRoutinesList();
+      lucide.createIcons();
+    }
+
+    function injectSingleRoutine(routineId, targetView = null) {
+      const r = appState.routines.find(item => item.id === routineId);
+      if (!r) return;
+      const dateKey = targetView ? DATE_KEYS[targetView] : getActiveDateKey();
+      if (!appState.tasksByDate[dateKey]) appState.tasksByDate[dateKey] = [];
+
+      appState.tasksByDate[dateKey].unshift({
+        id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        title: r.title,
+        category: r.category,
+        priority: r.priority || 'Medium',
+        time: '',
+        note: 'Daily Routine',
+        completed: false,
+        focusMinutes: 0,
+        subtasks: []
+      });
+      saveState();
+      renderAll();
+      showToast(`Added "${r.title}" to ${formatShortDate(dateKey)}`, 'success');
+    }
+
+    function injectAllRoutines(targetView) {
+      if (appState.routines.length === 0) return;
+      const dateKey = DATE_KEYS[targetView] || getActiveDateKey();
+      if (!appState.tasksByDate[dateKey]) appState.tasksByDate[dateKey] = [];
+
+      appState.routines.forEach(r => {
+        appState.tasksByDate[dateKey].unshift({
+          id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          title: r.title,
+          category: r.category,
+          priority: r.priority || 'Medium',
+          time: '',
+          note: 'Daily Routine',
+          completed: false,
+          focusMinutes: 0,
+          subtasks: []
+        });
+      });
+      saveState();
+      closeRoutinesModal();
+      renderAll();
+      showToast(`Injected ${appState.routines.length} routine tasks into ${targetView}`, 'success');
+    }
+
+    function applyStarterTemplate(templateKey) {
+      const templates = {
+        ops: [
+          { title: 'Sync & verify master Google Sheet metrics', category: 'Sheets & Ops', priority: 'High' },
+          { title: 'Clean CRM lead rows & update pipeline statuses', category: 'Work', priority: 'Medium' },
+          { title: 'Export EOD CSV snapshot & log completion %', category: 'Sheets & Ops', priority: 'Medium' }
+        ],
+        deepwork: [
+          { title: '90-min distraction-free deep work block on #1 priority', category: 'Work', priority: 'High' },
+          { title: 'Review architecture & draft technical implementation notes', category: 'Growth', priority: 'High' },
+          { title: 'Zero-notification inbox & Slack batch check', category: 'Personal', priority: 'Low' }
+        ],
+        weekly: [
+          { title: 'Audit 7-day completion trend & streak consistency', category: 'Growth', priority: 'High' },
+          { title: 'Review outreach conversion rates in Google Sheets', category: 'Outreach', priority: 'Medium' },
+          { title: 'Pre-populate next week’s top 5 priority milestones', category: 'Work', priority: 'High' }
+        ]
+      };
+
+      const items = templates[templateKey] || [];
+      const dateKey = getActiveDateKey();
+      if (!appState.tasksByDate[dateKey]) appState.tasksByDate[dateKey] = [];
+
+      items.forEach(item => {
+        appState.tasksByDate[dateKey].unshift({
+          id: 'tpl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          title: item.title,
+          category: item.category,
+          priority: item.priority,
+          time: '',
+          note: 'Template Checklist',
+          completed: false,
+          focusMinutes: 0,
+          subtasks: []
+        });
+      });
+
+      saveState();
+      closeRoutinesModal();
+      renderAll();
+      showToast(`Applied template (${items.length} tasks added)`, 'success');
+    }
+
+    function renderRoutinesList() {
+      const container = document.getElementById('routines-list-container');
+      if (appState.routines.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 italic">No saved routines yet. Add one above!</p>`;
+        return;
+      }
+      container.innerHTML = appState.routines
+        .map(
+          r => `
+          <div class="p-3 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(r.title)}</div>
+              <span class="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">${escapeHtml(r.category)}</span>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="injectSingleRoutine('${r.id}')" class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold hover:bg-indigo-600 hover:text-white transition cursor-pointer">
+                + Add Now
+              </button>
+              <button onclick="deleteRoutine('${r.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 cursor-pointer">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        `
+        )
+        .join('');
+    }
+
+    // =========================================================================
+    // END OF EVENING DAY ARCHIVE MODAL
+    // =========================================================================
+    function openEndOfDayModal() {
+      const stats = computeStatsForDate(DATE_KEYS.today);
+      document.getElementById('eod-date-label').textContent = formatShortDate(DATE_KEYS.today) + ', 2026';
+      document.getElementById('eod-completed-summary').textContent = `${stats.completed} tasks (${stats.completedPct}%)`;
+      document.getElementById('eod-remaining-summary').textContent = `${stats.remaining} tasks (${stats.remainingPct}%)`;
+      document.getElementById('eod-note-input').value = appState.dayNotes[DATE_KEYS.today] || '';
+
+      const modal = document.getElementById('eod-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeEndOfDayModal() {
+      const modal = document.getElementById('eod-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function executeEndOfDayArchive() {
+      const carryForward = document.getElementById('eod-carry-forward').checked;
+      const note = document.getElementById('eod-note-input').value.trim();
+
+      if (note) {
+        appState.dayNotes[DATE_KEYS.today] = note;
+      }
+
+      const todayTasks = appState.tasksByDate[DATE_KEYS.today] || [];
+      const unfinished = todayTasks.filter(t => !t.completed);
+
+      if (carryForward && unfinished.length > 0) {
+        if (!appState.tasksByDate[DATE_KEYS.tomorrow]) {
+          appState.tasksByDate[DATE_KEYS.tomorrow] = [];
+        }
+        unfinished.forEach(t => {
+          const exists = appState.tasksByDate[DATE_KEYS.tomorrow].some(tm => tm.title === t.title);
+          if (!exists) {
+            appState.tasksByDate[DATE_KEYS.tomorrow].unshift({
+              ...t,
+              id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              completed: false,
+              note: t.note ? `${t.note} (Carried over)` : 'Carried over from Nov 24'
+            });
+          }
+        });
+      }
+
+      saveState();
+      closeEndOfDayModal();
+      renderAll();
+      showToast(
+        carryForward && unfinished.length > 0
+          ? `Today archived to calendar & ${unfinished.length} remaining task(s) carried to Tomorrow!`
+          : 'Today’s completion record archived to Previous Calendar!',
+        'success'
+      );
+    }
+
+    // =========================================================================
+    // GOOGLE SHEETS & CSV UPLOAD / COLUMN MAPPER / MULTI-DATE ROUTER
+    // =========================================================================
+    function openSheetModal() {
+      pendingImportedTasks = [];
+      rawSheetRows = [];
+      sheetHeaders = [];
+      document.getElementById('sheet-preview-box').classList.add('hidden');
+      document.getElementById('sheet-column-mapper').classList.add('hidden');
+      document.getElementById('confirm-import-btn').disabled = true;
+      switchSheetTab('file');
+
+      const modal = document.getElementById('sheet-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeSheetModal() {
+      const modal = document.getElementById('sheet-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function switchSheetTab(tab) {
+      ['file', 'paste', 'url'].forEach(t => {
+        const btn = document.getElementById('sheet-tab-' + t);
+        const panel = document.getElementById('sheet-panel-' + t);
+        if (t === tab) {
+          btn.classList.add('border-emerald-600', 'text-emerald-600', 'dark:text-emerald-400');
+          btn.classList.remove('border-transparent', 'text-slate-500');
+          panel.classList.remove('hidden');
+        } else {
+          btn.classList.remove('border-emerald-600', 'text-emerald-600', 'dark:text-emerald-400');
+          btn.classList.add('border-transparent', 'text-slate-500');
+          panel.classList.add('hidden');
+        }
+      });
+    }
+
+    const dropzone = document.getElementById('csv-dropzone');
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.classList.add('border-emerald-500', 'bg-emerald-50/40', 'dark:bg-emerald-950/20');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-emerald-500', 'bg-emerald-50/40', 'dark:bg-emerald-950/20');
+    });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('border-emerald-500', 'bg-emerald-50/40', 'dark:bg-emerald-950/20');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        readUploadedSheetFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function handleCSVFileSelected(event) {
+      const file = event.target.files[0];
+      if (file) readUploadedSheetFile(file);
+    }
+
+    function readUploadedSheetFile(file) {
+      pendingImportedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = e => {
+        ingestRawSheetText(e.target.result, file.name);
+      };
+      reader.readAsText(file);
+    }
+
+    function previewPastedSheetData() {
+      const raw = document.getElementById('google-sheet-paste-area').value;
+      if (!raw.trim()) {
+        document.getElementById('sheet-preview-box').classList.add('hidden');
+        document.getElementById('sheet-column-mapper').classList.add('hidden');
+        document.getElementById('confirm-import-btn').disabled = true;
+        return;
+      }
+      pendingImportedFileName = 'Google_Sheets_Clipboard.csv';
+      ingestRawSheetText(raw, pendingImportedFileName);
+    }
+
+    function fillSampleGoogleSheetPaste() {
+      const sample = [
+        'Task\tCategory\tPriority\tStatus\tDate\tNotes',
+        'Complete backlink outreach batch #5\tOutreach\tHigh\tCompleted\tToday\t25 prospects emailed',
+        'Verify schema markup on product pages\tSEO & Content\tHigh\tPending\tToday\tRich snippets check',
+        'Sync weekly KPI dashboard in Google Sheets\tSheets & Ops\tMedium\tPending\tToday\tShare with leadership',
+        'Review yesterday unclosed support tickets\tWork\tMedium\tCompleted\tYesterday\tAll resolved',
+        'Draft Q1 content calendar roadmap\tGrowth\tHigh\tPending\tTomorrow\tFirst 6 topics',
+        'Archive Nov 21 partner outreach audit\tOutreach\tMedium\tCompleted\t2026-11-21\tHistorical log'
+      ].join('\n');
+      document.getElementById('google-sheet-paste-area').value = sample;
+      previewPastedSheetData();
+    }
+
+    async function fetchPublishedGoogleSheet() {
+      const url = document.getElementById('google-sheet-url-input').value.trim();
+      if (!url) {
+        showToast('Please enter a published Google Sheet CSV URL', 'error');
+        return;
+      }
+      try {
+        showToast('Fetching Google Sheet CSV...', 'info');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        pendingImportedFileName = 'Published_Google_Sheet.csv';
+        ingestRawSheetText(text, pendingImportedFileName);
+      } catch (err) {
+        showToast('Could not fetch URL directly (check public CSV sharing or paste cells directly).', 'error');
+      }
+    }
+
+    function ingestRawSheetText(rawText, fileName) {
+      const lines = rawText
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean);
+      if (lines.length === 0) return;
+
+      const delimiter = lines[0].includes('\t') ? '\t' : ',';
+      const splitRow = row => {
+        if (delimiter === '\t') return row.split('\t').map(c => c.trim());
+        const result = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < row.length; i++) {
+          const ch = row[i];
+          if (ch === '"') inQuotes = !inQuotes;
+          else if (ch === ',' && !inQuotes) {
+            result.push(cur.trim());
+            cur = '';
+          } else cur += ch;
+        }
+        result.push(cur.trim());
+        return result;
+      };
+
+      const parsedRows = lines.map(splitRow);
+      const firstLower = parsedRows[0].map(c => c.toLowerCase());
+      const hasHeader = firstLower.some(c =>
+        ['task', 'title', 'todo', 'to-do', 'item', 'description', 'name'].includes(c)
+      );
+
+      if (hasHeader) {
+        sheetHeaders = parsedRows[0];
+        rawSheetRows = parsedRows.slice(1);
+      } else {
+        sheetHeaders = parsedRows[0].map((_, idx) => `Column ${idx + 1}`);
+        rawSheetRows = parsedRows;
+      }
+
+      populateColumnMapperDropdowns(hasHeader);
+      reparseWithCurrentMapping(fileName);
+    }
+
+    function populateColumnMapperDropdowns(hasHeader) {
+      const mapperBox = document.getElementById('sheet-column-mapper');
+      mapperBox.classList.remove('hidden');
+
+      const selects = ['title', 'day', 'status', 'category', 'priority', 'note'];
+      const lowerHeaders = sheetHeaders.map(h => h.toLowerCase());
+
+      const guessIndex = keys => {
+        if (!hasHeader) return -1;
+        return lowerHeaders.findIndex(h => keys.some(k => h.includes(k)));
+      };
+
+      const defaults = {
+        title: Math.max(0, guessIndex(['task', 'title', 'todo', 'item', 'name'])),
+        day: guessIndex(['date', 'day', 'when', 'schedule']),
+        status: guessIndex(['status', 'done', 'completed', 'state']),
+        category: guessIndex(['category', 'tag', 'type', 'workstream']),
+        priority: guessIndex(['priority', 'urgency']),
+        note: guessIndex(['note', 'detail', 'comment', 'time'])
+      };
+
+      if (!hasHeader) {
+        defaults.category = sheetHeaders.length > 1 ? 1 : -1;
+        defaults.priority = sheetHeaders.length > 2 ? 2 : -1;
+        defaults.status = sheetHeaders.length > 3 ? 3 : -1;
+        defaults.day = sheetHeaders.length > 4 ? 4 : -1;
+        defaults.note = sheetHeaders.length > 5 ? 5 : -1;
+      }
+
+      selects.forEach(field => {
+        const sel = document.getElementById('map-col-' + field);
+        let opts = field === 'title' ? '' : `<option value="-1">-- None / Default --</option>`;
+        sheetHeaders.forEach((h, idx) => {
+          opts += `<option value="${idx}" ${defaults[field] === idx ? 'selected' : ''}>${escapeHtml(h)}</option>`;
+        });
+        sel.innerHTML = opts;
+      });
+    }
+
+    function reparseWithCurrentMapping(fileNameOverride = null) {
+      if (rawSheetRows.length === 0) return;
+      const fileName = fileNameOverride || pendingImportedFileName;
+
+      const idxTitle = parseInt(document.getElementById('map-col-title').value, 10);
+      const idxDay = parseInt(document.getElementById('map-col-day').value, 10);
+      const idxStatus = parseInt(document.getElementById('map-col-status').value, 10);
+      const idxCategory = parseInt(document.getElementById('map-col-category').value, 10);
+      const idxPriority = parseInt(document.getElementById('map-col-priority').value, 10);
+      const idxNote = parseInt(document.getElementById('map-col-note').value, 10);
+
+      const tasks = [];
+      rawSheetRows.forEach(cols => {
+        const title = (cols[idxTitle] || '').trim();
+        if (!title) return;
+
+        const rawCategory = idxCategory >= 0 ? (cols[idxCategory] || 'Work') : 'Work';
+        const rawPriority = idxPriority >= 0 ? (cols[idxPriority] || 'Medium') : 'Medium';
+        const rawStatus = idxStatus >= 0 ? (cols[idxStatus] || '').toLowerCase() : '';
+        const rawDay = idxDay >= 0 ? (cols[idxDay] || '').trim().toLowerCase() : '';
+        const rawNote = idxNote >= 0 ? (cols[idxNote] || '') : '';
+
+        const isCompleted = ['done', 'completed', 'complete', 'yes', 'true', '1', 'x', '✓'].includes(rawStatus);
+
+        let priority = 'Medium';
+        if (/high|urgent|p1/i.test(rawPriority)) priority = 'High';
+        else if (/low|p3/i.test(rawPriority)) priority = 'Low';
+
+        // Multi-Date Router: supports 'yesterday', 'today', 'tomorrow', 'YYYY-MM-DD', or 'Nov 21'
+        let resolvedDay = 'today';
+        if (/yesterday|nov 23|2026-11-23/i.test(rawDay)) resolvedDay = 'yesterday';
+        else if (/tomorrow|nov 25|2026-11-25/i.test(rawDay)) resolvedDay = 'tomorrow';
+        else if (/^\d{4}-\d{2}-\d{2}$/.test(rawDay)) resolvedDay = rawDay;
+        else if (/^nov\s+(\d{1,2})/i.test(rawDay)) {
+          const m = rawDay.match(/^nov\s+(\d{1,2})/i);
+          resolvedDay = `2026-11-${String(m[1]).padStart(2, '0')}`;
+        }
+
+        tasks.push({
+          title,
+          category: rawCategory || 'Work',
+          priority,
+          completed: isCompleted,
+          resolvedDay,
+          note: rawNote
+        });
+      });
+
+      showParsedPreview(tasks, fileName);
+    }
+
+    function showParsedPreview(parsedTasks, fileName) {
+      pendingImportedTasks = parsedTasks;
+      const box = document.getElementById('sheet-preview-box');
+      const countEl = document.getElementById('sheet-preview-count');
+      const fileEl = document.getElementById('sheet-filename-badge');
+      const tableEl = document.getElementById('sheet-preview-table');
+      const importBtn = document.getElementById('confirm-import-btn');
+
+      if (parsedTasks.length === 0) {
+        box.classList.add('hidden');
+        importBtn.disabled = true;
+        showToast('No valid task rows found in sheet.', 'error');
+        return;
+      }
+
+      box.classList.remove('hidden');
+      importBtn.disabled = false;
+      countEl.textContent = `${parsedTasks.length} task(s) parsed & ready to import`;
+      fileEl.textContent = fileName;
+
+      tableEl.innerHTML = parsedTasks
+        .map(
+          t => `
+        <div class="py-1.5 flex items-center justify-between gap-2">
+          <div class="truncate font-medium text-slate-800 dark:text-slate-100">
+            <span class="inline-block w-2 h-2 rounded-full mr-1.5 ${t.completed ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+            ${escapeHtml(t.title)}
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-[10px]">${escapeHtml(t.category)}</span>
+            <span class="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono capitalize">${escapeHtml(t.resolvedDay)}</span>
+          </div>
+        </div>
+      `
+        )
+        .join('');
+    }
+
+    function commitSheetImport() {
+      if (pendingImportedTasks.length === 0) return;
+
+      pushUndoSnapshot();
+      const overrideTarget = document.getElementById('sheet-target-day').value;
+      let importedCount = 0;
+
+      pendingImportedTasks.forEach(item => {
+        let targetKey = DATE_KEYS.today;
+        if (overrideTarget !== 'auto') {
+          targetKey = DATE_KEYS[overrideTarget] || DATE_KEYS.today;
+        } else {
+          if (DATE_KEYS[item.resolvedDay]) targetKey = DATE_KEYS[item.resolvedDay];
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(item.resolvedDay)) targetKey = item.resolvedDay;
+        }
+
+        if (!appState.tasksByDate[targetKey]) {
+          appState.tasksByDate[targetKey] = [];
+        }
+
+        appState.tasksByDate[targetKey].unshift({
+          id: 'sheet-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          title: item.title,
+          category: item.category,
+          priority: item.priority,
+          time: '',
+          note: item.note || `From ${pendingImportedFileName}`,
+          completed: item.completed,
+          focusMinutes: 0,
+          subtasks: []
+        });
+        importedCount++;
+      });
+
+      appState.uploadedSheets.unshift({
+        id: 'sh-' + Date.now(),
+        name: pendingImportedFileName,
+        date: DATE_KEYS.today,
+        count: importedCount
+      });
+
+      saveState();
+      closeSheetModal();
+      renderAll();
+      showToast(`Imported ${importedCount} tasks across schedule from ${pendingImportedFileName}!`, 'success', true);
+    }
+
+    function downloadSampleTemplateCSV() {
+      const csv = [
+        'Task,Category,Priority,Status,Date,Notes',
+        '"Audit Q4 outreach sheet links","Outreach","High","Pending","Today","Check response rate"',
+        '"Publish weekly blog post draft","SEO & Content","Medium","Completed","Today","Uploaded to CMS"',
+        '"Prepare tomorrow sprint priorities","Work","High","Pending","Tomorrow","10 AM standup"',
+        '"Review yesterday analytics export","Sheets & Ops","Low","Completed","Yesterday","Synced"',
+        '"Historical sprint retrospective log","Growth","Medium","Completed","2026-11-21","Routed to Nov 21"'
+      ].join('\n');
+      triggerCSVDownload(csv, 'ChronoSheet_MultiDate_Template.csv');
+      showToast('Downloaded Multi-Date Google Sheets CSV template', 'success');
+    }
+
+    function exportCurrentViewCSV() {
+      const dateKey = getActiveDateKey();
+      const tasks = appState.tasksByDate[dateKey] || [];
+      const stats = computeStatsForDate(dateKey);
+
+      const rows = [
+        ['Task', 'Category', 'Priority', 'Status', 'Date', 'Time', 'Focus_Mins', 'Notes', 'Day_Completion_Pct'].join(',')
+      ];
+
+      tasks.forEach(t => {
+        rows.push(
+          [
+            `"${(t.title || '').replace(/"/g, '""')}"`,
+            `"${(t.category || 'Work').replace(/"/g, '""')}"`,
+            `"${t.priority || 'Medium'}"`,
+            `"${t.completed ? 'Completed' : 'Remaining'}"`,
+            `"${dateKey}"`,
+            `"${(t.time || '').replace(/"/g, '""')}"`,
+            `"${t.focusMinutes || 0}"`,
+            `"${(t.note || '').replace(/"/g, '""')}"`,
+            `"${stats.completedPct}%"`
+          ].join(',')
+        );
+      });
+
+      triggerCSVDownload(rows.join('\n'), `ChronoSheet_${dateKey}.csv`);
+      showToast(`Exported ${tasks.length} tasks to CSV for Google Sheets`, 'success');
+    }
+
+    function triggerCSVDownload(csvContent, filename) {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function confirmResetDemo() {
+      localStorage.removeItem(STORAGE_KEY);
+      appState = getDefaultState();
+      selectedTaskIds.clear();
+      saveState();
+      applyTheme();
+      renderAll();
+      showToast('Workspace reset to default November 2026 dataset', 'info');
+    }
+
+    // =========================================================================
+    // RENDERING: SIDEBAR CALENDAR & PREVIOUS DATES ARCHIVE
+    // =========================================================================
+    function changeCalendarMonth(delta) {
+      appState.calendarMonth += delta;
+      if (appState.calendarMonth < 0) {
+        appState.calendarMonth = 11;
+        appState.calendarYear--;
+      } else if (appState.calendarMonth > 11) {
+        appState.calendarMonth = 0;
+        appState.calendarYear++;
+      }
+      renderSidebar();
+      lucide.createIcons();
+    }
+
+    function renderSidebar() {
+      const streaks = computeStreaks();
+      document.getElementById('sidebar-streak-count').textContent = `${streaks.currentStreak}d`;
+
+      const year = appState.calendarYear;
+      const month = appState.calendarMonth;
+      const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric'
+      });
+      document.getElementById('calendar-month-label').textContent = monthLabel;
+
+      const firstDayOfWeek = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const grid = document.getElementById('calendar-grid');
+      const activeKey = getActiveDateKey();
+
+      let cellsHtml = '';
+      for (let i = 0; i < firstDayOfWeek; i++) {
+        cellsHtml += `<div class="h-8"></div>`;
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const tasks = appState.tasksByDate[iso] || [];
+        const stats = computeStatsForDate(iso);
+        const isToday = iso === DATE_KEYS.today;
+        const isSelected = iso === activeKey;
+
+        let dotHtml = '';
+        if (tasks.length > 0) {
+          let dotColor = 'bg-rose-500';
+          if (isToday) dotColor = 'bg-indigo-500';
+          else if (stats.completedPct === 100) dotColor = 'bg-emerald-500';
+          else if (stats.completedPct >= 50) dotColor = 'bg-amber-500';
+
+          dotHtml = `<span class="w-1.5 h-1.5 rounded-full ${dotColor} mt-0.5"></span>`;
+        } else {
+          dotHtml = `<span class="w-1.5 h-1.5 rounded-full bg-transparent mt-0.5"></span>`;
+        }
+
+        let cellClasses =
+          'h-9 rounded-xl flex flex-col items-center justify-center text-xs font-medium transition cursor-pointer ';
+        if (isSelected) {
+          cellClasses += 'bg-indigo-600 text-white font-bold shadow-xs';
+        } else if (isToday) {
+          cellClasses += 'bg-indigo-100/80 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold ring-1 ring-indigo-400/50';
+        } else if (tasks.length > 0) {
+          cellClasses += 'hover:bg-white dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold';
+        } else {
+          cellClasses += 'hover:bg-white/70 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500';
+        }
+
+        cellsHtml += `
+          <button onclick="openArchiveDate('${iso}')" class="${cellClasses}" title="${iso}${tasks.length ? ` • ${stats.completedPct}% completed` : ''}">
+            <span>${day}</span>
+            ${dotHtml}
+          </button>
+        `;
+      }
+      grid.innerHTML = cellsHtml;
+
+      const allDates = Object.keys(appState.tasksByDate)
+        .filter(d => d <= DATE_KEYS.today && (appState.tasksByDate[d] || []).length > 0)
+        .sort((a, b) => b.localeCompare(a));
+
+      document.getElementById('archive-count-badge').textContent = `${allDates.length} days`;
+
+      const historyContainer = document.getElementById('recent-archives-list');
+      historyContainer.innerHTML = allDates
+        .map(iso => {
+          const stats = computeStatsForDate(iso);
+          const isSelected = iso === activeKey;
+          let label = formatShortDate(iso);
+          if (iso === DATE_KEYS.today) label += ' (Today)';
+          else if (iso === DATE_KEYS.yesterday) label += ' (Yesterday)';
+
+          let badgeStyle = 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300';
+          if (stats.completedPct === 100) {
+            badgeStyle = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300';
+          } else if (stats.completedPct >= 50) {
+            badgeStyle = 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300';
+          }
+
+          return `
+            <button
+              onclick="openArchiveDate('${iso}')"
+              class="w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-left transition cursor-pointer ${
+                isSelected
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'
+              }"
+            >
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">${label}</div>
+                <div class="text-[11px] text-slate-400">${stats.completed}/${stats.total} tasks completed</div>
+              </div>
+              <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${badgeStyle}">${stats.completedPct}%</span>
+            </button>
+          `;
+        })
+        .join('');
+
+      const sheetsList = document.getElementById('uploaded-sheets-list');
+      sheetsList.innerHTML = appState.uploadedSheets
+        .slice(0, 4)
+        .map(
+          sh => `
+          <div class="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5 text-emerald-500 shrink-0"></i>
+              <span class="truncate font-medium text-slate-700 dark:text-slate-300">${escapeHtml(sh.name)}</span>
+            </div>
+            <span class="text-[10px] font-mono font-semibold text-slate-400 shrink-0">${sh.count} rows</span>
+          </div>
+        `
+        )
+        .join('');
+    }
+
+    // =========================================================================
+    // RENDERING: MAIN WORKSPACE, PERCENTAGE ANALYTICS & TASK CARDS
+    // =========================================================================
+    function renderWorkspace() {
+      const dateKey = getActiveDateKey();
+      const allTasks = appState.tasksByDate[dateKey] || [];
+      const stats = computeStatsForDate(dateKey);
+
+      // Update Bulk Action Bar
+      const bulkBar = document.getElementById('bulk-action-bar');
+      if (selectedTaskIds.size > 0) {
+        bulkBar.classList.remove('hidden');
+        document.getElementById('bulk-selected-count').textContent = `${selectedTaskIds.size} selected`;
+      } else {
+        bulkBar.classList.add('hidden');
+      }
+
+      // Update Top Timeline Segmented Tabs
+      const yStats = computeStatsForDate(DATE_KEYS.yesterday);
+      const tdStats = computeStatsForDate(DATE_KEYS.today);
+      const tmTasks = appState.tasksByDate[DATE_KEYS.tomorrow] || [];
+
+      document.getElementById('badge-yesterday').textContent = `${yStats.completedPct}%`;
+      document.getElementById('badge-today').textContent = `${tdStats.completedPct}%`;
+      document.getElementById('badge-tomorrow').textContent = `${tmTasks.length}`;
+
+      ['yesterday', 'today', 'tomorrow'].forEach(tab => {
+        const el = document.getElementById('tab-' + tab);
+        if (appState.activeView === tab) {
+          el.classList.add('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs');
+          el.classList.remove('text-slate-500', 'dark:text-slate-400');
+        } else {
+          el.classList.remove('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs');
+          el.classList.add('text-slate-500', 'dark:text-slate-400');
+        }
+      });
+
+      // Historical Archive Banner
+      const archiveBanner = document.getElementById('archive-banner');
+      if (appState.activeView === 'archive') {
+        archiveBanner.classList.remove('hidden');
+        document.getElementById('archive-banner-score').textContent = `${stats.completedPct}% Completed • ${stats.remainingPct}% Remaining`;
+        document.getElementById('archive-banner-subtitle').textContent = `Viewing archived schedule for ${formatHumanDate(dateKey)}`;
+      } else {
+        archiveBanner.classList.add('hidden');
+      }
+
+      // Headings & Context Hints
+      document.getElementById('active-date-display').textContent = formatHumanDate(dateKey);
+
+      const viewMeta = {
+        yesterday: {
+          title: "Yesterday's Review & Wrap-Up",
+          btnText: 'Add to Yesterday',
+          rolloverLabel: 'Move Unfinished to Today'
+        },
+        today: {
+          title: "Today's Execution Board",
+          btnText: 'Add to Today',
+          rolloverLabel: 'Move Unfinished to Tomorrow'
+        },
+        tomorrow: {
+          title: "Tomorrow's Planned Agenda",
+          btnText: 'Schedule for Tomorrow',
+          rolloverLabel: 'Pull Tasks into Today'
+        },
+        archive: {
+          title: `Archived Log — ${formatShortDate(dateKey)}`,
+          btnText: 'Add Entry to Date',
+          rolloverLabel: 'Copy Unfinished to Today'
+        }
+      };
+
+      const meta = viewMeta[appState.activeView] || viewMeta.today;
+      document.getElementById('active-view-title').textContent = meta.title;
+      document.getElementById('add-task-btn-text').textContent = meta.btnText;
+      document.getElementById('context-rollover-label').textContent = meta.rolloverLabel;
+
+      // Update Live Progress Ring & Percentage Bars
+      const circumference = 2 * Math.PI * 40;
+      const offset = circumference - (stats.completedPct / 100) * circumference;
+      const ringCircle = document.getElementById('completion-ring-circle');
+      ringCircle.style.strokeDashoffset = offset;
+
+      if (stats.completedPct === 100 && stats.total > 0) {
+        ringCircle.classList.remove('text-amber-500', 'text-indigo-500');
+        ringCircle.classList.add('text-emerald-500');
+      } else if (stats.completedPct >= 50) {
+        ringCircle.classList.remove('text-amber-500', 'text-emerald-500');
+        ringCircle.classList.add('text-indigo-500');
+      } else {
+        ringCircle.classList.remove('text-emerald-500', 'text-indigo-500');
+        ringCircle.classList.add('text-amber-500');
+      }
+
+      document.getElementById('ring-percent-text').textContent = `${stats.completedPct}%`;
+      document.getElementById('total-tasks-pill').textContent = `${stats.total} Total Task${stats.total === 1 ? '' : 's'}`;
+
+      document.getElementById('completed-stat-label').textContent = `${stats.completedPct}% (${stats.completed}/${stats.total})`;
+      document.getElementById('completed-bar-fill').style.width = `${stats.completedPct}%`;
+
+      document.getElementById('remaining-stat-label').textContent = `${stats.remainingPct}% (${stats.remaining}/${stats.total})`;
+      document.getElementById('remaining-bar-fill').style.width = `${stats.remainingPct}%`;
+
+      document.getElementById('pending-column-badge').textContent = `${stats.remaining} task${stats.remaining === 1 ? '' : 's'} • ${stats.remainingPct}%`;
+      document.getElementById('completed-column-badge').textContent = `${stats.completed} task${stats.completed === 1 ? '' : 's'} • ${stats.completedPct}%`;
+
+      renderCategoryBreakdown(allTasks);
+
+      // Filter Pills Styling
+      ['all', 'pending', 'completed'].forEach(f => {
+        const btn = document.getElementById('filter-' + f);
+        if (appState.filterStatus === f) {
+          btn.classList.add('bg-indigo-600', 'text-white');
+          btn.classList.remove('bg-white', 'dark:bg-slate-900', 'text-slate-600', 'dark:text-slate-300', 'border', 'border-slate-200', 'dark:border-slate-800');
+        } else {
+          btn.classList.remove('bg-indigo-600', 'text-white');
+          btn.classList.add('bg-white', 'dark:bg-slate-900', 'text-slate-600', 'dark:text-slate-300', 'border', 'border-slate-200', 'dark:border-slate-800');
+        }
+      });
+
+      // Apply Search, Priority, Category & Sort
+      const query = document.getElementById('task-search-input').value.trim().toLowerCase();
+      const prioFilter = document.getElementById('filter-priority-select').value;
+      const catFilter = document.getElementById('filter-category-select').value;
+      const sortBy = document.getElementById('task-sort-select').value;
+
+      let filtered = allTasks.filter(t => {
+        if (appState.filterStatus === 'pending' && t.completed) return false;
+        if (appState.filterStatus === 'completed' && !t.completed) return false;
+        if (prioFilter !== 'all' && t.priority !== prioFilter) return false;
+        if (catFilter !== 'all' && t.category !== catFilter) return false;
+        if (query) {
+          const hay = `${t.title} ${t.category} ${t.note || ''}`.toLowerCase();
+          if (!hay.includes(query)) return false;
+        }
+        return true;
+      });
+
+      const prioRank = { High: 1, Medium: 2, Low: 3 };
+      if (sortBy === 'priority') {
+        filtered.sort((a, b) => (prioRank[a.priority] || 9) - (prioRank[b.priority] || 9));
+      } else if (sortBy === 'category') {
+        filtered.sort((a, b) => (a.category || '').localeCompare(b.category || ''));
+      }
+
+      const pendingTasks = filtered.filter(t => !t.completed);
+      const completedTasks = filtered.filter(t => t.completed);
+
+      document.getElementById('pending-tasks-container').innerHTML =
+        pendingTasks.length === 0
+          ? renderEmptyState('No remaining tasks here', 'All tasks are either completed or none scheduled yet.')
+          : pendingTasks.map(t => renderTaskCard(t)).join('');
+
+      document.getElementById('completed-tasks-container').innerHTML =
+        completedTasks.length === 0
+          ? renderEmptyState('No completed tasks yet', 'Check off tasks on the left as you finish them!')
+          : completedTasks.map(t => renderTaskCard(t)).join('');
+    }
+
+    function renderCategoryBreakdown(tasks) {
+      const container = document.getElementById('category-breakdown-list');
+      if (tasks.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 italic">Add or upload tasks to see workstream progress.</p>`;
+        return;
+      }
+
+      const map = {};
+      tasks.forEach(t => {
+        const cat = t.category || 'Work';
+        if (!map[cat]) map[cat] = { total: 0, done: 0 };
+        map[cat].total++;
+        if (t.completed) map[cat].done++;
+      });
+
+      container.innerHTML = Object.entries(map)
+        .map(([cat, info]) => {
+          const pct = Math.round((info.done / info.total) * 100);
+          return `
+            <div>
+              <div class="flex items-center justify-between text-[11px] font-semibold mb-1">
+                <span class="text-slate-700 dark:text-slate-300 truncate">${escapeHtml(cat)}</span>
+                <span class="font-mono text-slate-500">${info.done}/${info.total} (${pct}%)</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full rounded-full bg-indigo-500 transition-all duration-500" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    function renderTaskCard(task) {
+      const prioColors = {
+        High: 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300',
+        Medium: 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300',
+        Low: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+      };
+
+      const isSelected = selectedTaskIds.has(task.id);
+      const subtasks = task.subtasks || [];
+      const doneSubtasks = subtasks.filter(s => s.done).length;
+      const isExpanded = expandedSubtaskIds.has(task.id);
+
+      const moveActionBtn =
+        appState.activeView === 'today'
+          ? `<button onclick="moveTaskToDate('${task.id}', '${DATE_KEYS.tomorrow}', 'Tomorrow')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer" title="Move to Tomorrow">
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>`
+          : appState.activeView === 'yesterday' || appState.activeView === 'tomorrow'
+          ? `<button onclick="moveTaskToDate('${task.id}', '${DATE_KEYS.today}', 'Today')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer" title="Move to Today">
+              <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+            </button>`
+          : '';
+
+      const subtasksHtml = isExpanded
+        ? `
+          <div class="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 space-y-1.5">
+            ${subtasks
+              .map(
+                s => `
+                <label class="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+                  <input type="checkbox" ${s.done ? 'checked' : ''} onchange="toggleSubtaskItem('${task.id}', '${s.id}')" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                  <span class="${s.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-300'}">${escapeHtml(s.text)}</span>
+                </label>
+              `
+              )
+              .join('')}
+            <form onsubmit="addSubtask(event, '${task.id}')" class="flex items-center gap-1.5 pt-1">
+              <input type="text" id="subtask-input-${task.id}" placeholder="Add checklist sub-step..." class="flex-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <button type="submit" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold cursor-pointer">Add</button>
+            </form>
+          </div>
+        `
+        : '';
+
+      return `
+        <div
+          draggable="true"
+          ondragstart="handleDragStart(event, '${task.id}')"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDropOnTask(event, '${task.id}')"
+          class="animate-task group p-3.5 rounded-2xl border transition ${
+            isSelected
+              ? 'ring-2 ring-indigo-500 border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30'
+              : task.completed
+              ? 'bg-slate-50/80 dark:bg-slate-800/30 border-slate-200/60 dark:border-slate-800/80'
+              : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-2xs'
+          }"
+        >
+          <div class="flex items-start gap-2.5">
+            <!-- Bulk Select Checkbox -->
+            <input
+              type="checkbox"
+              ${isSelected ? 'checked' : ''}
+              onchange="toggleBulkSelect('${task.id}')"
+              title="Select for bulk action"
+              class="mt-1 w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 opacity-60 group-hover:opacity-100 transition cursor-pointer"
+            />
+
+            <!-- Interactive Completion Checkbox -->
+            <button
+              onclick="toggleTaskCompletion('${task.id}')"
+              aria-label="Toggle task completion"
+              class="mt-0.5 w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition cursor-pointer ${
+                task.completed
+                  ? 'bg-emerald-500 border-emerald-500 text-white'
+                  : 'border-slate-300 dark:border-slate-600 hover:border-indigo-500 bg-white dark:bg-slate-900'
+              }"
+            >
+              ${task.completed ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+            </button>
+
+            <!-- Task Content -->
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold leading-snug break-words ${
+                task.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-100'
+              }">
+                ${escapeHtml(task.title)}
+              </p>
+
+              <!-- Tags, Focus Time, Subtasks & Notes Row -->
+              <div class="flex items-center flex-wrap gap-1.5 mt-2">
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
+                  ${escapeHtml(task.category || 'Work')}
+                </span>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${prioColors[task.priority] || prioColors.Medium}">
+                  ${escapeHtml(task.priority || 'Medium')}
+                </span>
+                ${
+                  task.time
+                    ? `<span class="inline-flex items-center gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                        <i data-lucide="clock" class="w-3 h-3"></i>${escapeHtml(task.time)}
+                      </span>`
+                    : ''
+                }
+                ${
+                  task.focusMinutes > 0
+                    ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-mono font-semibold">
+                        <i data-lucide="timer" class="w-3 h-3"></i>${task.focusMinutes}m focused
+                      </span>`
+                    : ''
+                }
+                <button onclick="toggleSubtaskDrawer('${task.id}')" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-mono transition cursor-pointer">
+                  <i data-lucide="list-checks" class="w-3 h-3"></i>
+                  <span>${subtasks.length ? `${doneSubtasks}/${subtasks.length}` : '+Steps'}</span>
+                </button>
+              </div>
+
+              ${
+                task.note
+                  ? `<p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <i data-lucide="file-text" class="w-3 h-3 shrink-0 text-slate-400"></i>
+                      <span class="truncate">${escapeHtml(task.note)}</span>
+                    </p>`
+                  : ''
+              }
+
+              ${subtasksHtml}
+            </div>
+
+            <!-- Hover / Touch Quick Actions -->
+            <div class="flex items-center gap-0.5 opacity-95 sm:opacity-0 sm:group-hover:opacity-100 transition shrink-0">
+              ${
+                !task.completed
+                  ? `<button onclick="startFocusForTask('${task.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition cursor-pointer" title="Start Focus Timer">
+                      <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                    </button>`
+                  : ''
+              }
+              ${moveActionBtn}
+              <button onclick="deleteTask('${task.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition cursor-pointer" title="Delete task">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEmptyState(title, subtitle) {
+      return `
+        <div class="py-10 px-4 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+          <p class="text-xs font-bold text-slate-600 dark:text-slate-300">${title}</p>
+          <p class="text-[11px] text-slate-400 mt-1">${subtitle}</p>
+        </div>
+      `;
+    }
+
+    function renderAll() {
+      renderSidebar();
+      renderWorkspace();
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // UTILITIES: UNDO TOASTS, KEYBOARD SHORTCUTS & ESCAPING
+    // =========================================================================
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showToast(message, type = 'info', allowUndo = false) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-800 text-white dark:bg-slate-700'
+      };
+      toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold flex items-center justify-between gap-3 transition transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+
+      const msgSpan = document.createElement('span');
+      msgSpan.textContent = message;
+      toast.appendChild(msgSpan);
+
+      if (allowUndo && lastUndoSnapshot) {
+        const undoBtn = document.createElement('button');
+        undoBtn.textContent = 'Undo';
+        undoBtn.className = 'px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-white font-bold uppercase tracking-wider text-[10px] cursor-pointer shrink-0';
+        undoBtn.onclick = () => {
+          triggerUndo();
+          toast.remove();
+        };
+        toast.appendChild(undoBtn);
+      }
+
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 250);
+      }, 4200);
+    }
+
+    // Global Keyboard Shortcuts: 'N' (Focus New Task), '/' (Focus Search), 'Escape' (Close Modals)
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeSheetModal();
+        closeEndOfDayModal();
+        closeInsightsModal();
+        closeRoutinesModal();
+        closeMobileSidebar();
+        return;
+      }
+
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        const input = document.getElementById('task-title-input');
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input.focus();
+      } else if (e.key === '/') {
+        e.preventDefault();
+        document.getElementById('task-search-input').focus();
+      }
+    });
+
+    // Initialize Application
+    window.addEventListener('DOMContentLoaded', () => {
+      applyTheme();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
